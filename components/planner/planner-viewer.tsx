@@ -368,29 +368,6 @@ export function PlannerViewer() {
     handleUpdateAnnotation(selectedImage.id, { width, height });
   };
 
-  const helpText = useMemo(() => {
-    if (isCustomPage(page)) {
-      if (tool === "image") {
-        return pendingImage
-          ? "Custom page: click where you want the image. Use Type for text anytime."
-          : "Custom page: pick Image, choose a photo, then click the page to place it.";
-      }
-      return "Custom page — fully yours. Click anywhere to type. Use Image to add photos.";
-    }
-    if (calendarFeedUrl) {
-      return "Events show on monthly calendar pages — click a month tab (JAN, FEB, etc.) on the left edge.";
-    }
-    if (tool === "image") {
-      return pendingImage
-        ? "Click the page to place your image."
-        : "Choose Image, pick a photo, then click the page.";
-    }
-    if (tool === "text") {
-      return "Use the toolbar to pick font, size, and color — then click any line or box to type.";
-    }
-    return "Check mode: click on » marks or checklist rows to add a checkmark. Tabs still work.";
-  }, [page, tool, pendingImage, calendarFeedUrl]);
-
   const statusMessage = useMemo(() => {
     if (loading) return formatLoadingMessage(loadProgress);
     if (error) return error;
@@ -510,15 +487,6 @@ export function PlannerViewer() {
               onPendingImagePlaced={() => setPendingImage(null)}
             />
 
-            <p className="text-muted-foreground mt-4 max-w-2xl text-center text-xs sm:text-sm">
-              {helpText}
-            </p>
-            {restoreLink && (
-              <p className="text-muted-foreground mt-2 max-w-2xl text-center text-xs">
-                Your notes auto-save to the cloud. Bookmark this page once — if your browser
-                ever clears data, open that bookmark and everything comes back.
-              </p>
-            )}
           </>
         )}
       </main>
