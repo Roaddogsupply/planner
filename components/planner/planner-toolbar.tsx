@@ -6,6 +6,7 @@ import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import type { PlannerTool } from "@/lib/annotations";
+import { CalendarSettings } from "@/components/planner/calendar-settings";
 import {
   ChevronLeft,
   ChevronRight,
@@ -31,6 +32,13 @@ type PlannerToolbarProps = {
   onExport: () => void;
   onReset: () => void;
   hasSelection: boolean;
+  calendarFeedUrl: string | null;
+  calendarEventCount: number;
+  calendarSyncing: boolean;
+  calendarLastSynced: string | null;
+  onCalendarSave: (url: string) => Promise<void>;
+  onCalendarDisconnect: () => void;
+  onCalendarRefresh: () => Promise<void>;
 };
 
 export function PlannerToolbar({
@@ -48,6 +56,13 @@ export function PlannerToolbar({
   onExport,
   onReset,
   hasSelection,
+  calendarFeedUrl,
+  calendarEventCount,
+  calendarSyncing,
+  calendarLastSynced,
+  onCalendarSave,
+  onCalendarDisconnect,
+  onCalendarRefresh,
 }: PlannerToolbarProps) {
   return (
     <header className="planner-toolbar sticky top-0 z-50 border-b backdrop-blur-md">
@@ -145,6 +160,16 @@ export function PlannerToolbar({
             <CheckSquare />
             Check
           </Button>
+
+          <CalendarSettings
+            feedUrl={calendarFeedUrl}
+            eventCount={calendarEventCount}
+            syncing={calendarSyncing}
+            lastSynced={calendarLastSynced}
+            onSave={onCalendarSave}
+            onDisconnect={onCalendarDisconnect}
+            onRefresh={onCalendarRefresh}
+          />
 
           {tool === "text" && (
             <Input

@@ -16,6 +16,9 @@ import {
 } from "@/lib/annotations";
 import { cn } from "@/lib/utils";
 import { Check } from "lucide-react";
+import { parseCalendarDayFromUri } from "@/lib/calendar-cells";
+import type { CalendarDayCell, CalendarEvent } from "@/lib/calendar-types";
+import { CalendarOverlay } from "@/components/planner/calendar-overlay";
 
 type PdfPageProps = {
   pdf: PDFDocumentProxy;
@@ -30,6 +33,7 @@ type PdfPageProps = {
   onUpdateAnnotation: (id: string, patch: Record<string, unknown>) => void;
   onSelectAnnotation: (id: string | null) => void;
   onToggleCheckbox: (id: string) => void;
+  calendarEvents: CalendarEvent[];
 };
 
 type LinkOverlay = {
@@ -92,11 +96,13 @@ export function PdfPage({
   onUpdateAnnotation,
   onSelectAnnotation,
   onToggleCheckbox,
+  calendarEvents,
 }: PdfPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [pageSize, setPageSize] = useState({ width: 816, height: 595 });
   const [links, setLinks] = useState<LinkOverlay[]>([]);
+  const [calendarCells, setCalendarCells] = useState<CalendarDayCell[]>([]);
   const [loading, setLoading] = useState(true);
   const dragState = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null);
 
@@ -127,6 +133,7 @@ export function PdfPage({
         if (cancelled) return;
 
         const pageLinks: LinkOverlay[] = [];
+        const dayCells: CalendarDayCell[] = [];
         for (const annotation of await page.getAnnotations()) {
           if (annotation.subtype !== "Link") continue;
 
@@ -146,6 +153,10 @@ export function PdfPage({
           };
 
           if (annotation.url) {
+            const calendarDay = parseCalendarDayFromUri(annotation.url, base);
+            if (calendarDay) {
+              dayCells.push(calendarDay);
+            }
             pageLinks.push(expandLink({ ...base, uri: annotation.url }));
           } else if (annotation.dest) {
             const dest =
@@ -164,6 +175,7 @@ export function PdfPage({
 
         if (!cancelled) {
           setLinks(pageLinks);
+          setCalendarCells(dayCells);
         }
       } catch (renderError) {
         if (!cancelled) {
@@ -312,6 +324,8 @@ export function PdfPage({
         onClick={handlePageClick}
       >
         <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
+
+        <CalendarOverlay cells={calendarCells} events={calendarEvents} />
 
         {pageAnnotations.map((annotation) => {
           if (isCheckboxAnnotation(annotation)) {

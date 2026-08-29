@@ -11,6 +11,14 @@ import {
 } from "@/lib/annotations";
 import { PdfPage } from "@/components/planner/pdf-page";
 import { PlannerToolbar } from "@/components/planner/planner-toolbar";
+import type { CalendarEvent } from "@/lib/calendar-types";
+import {
+  clearCalendarCache,
+  loadCalendarCache,
+  loadCalendarFeedUrl,
+  saveCalendarCache,
+  saveCalendarFeedUrl,
+} from "@/lib/calendar-storage";
 
 function formatLoadingMessage(progress: LoadProgress | null) {
   if (!progress) return "Starting planner…";
@@ -46,6 +54,10 @@ export function PlannerViewer() {
   const [annotations, setAnnotations] = useState<PlannerAnnotation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [savedLabel, setSavedLabel] = useState("Saved locally");
+  const [calendarFeedUrl, setCalendarFeedUrl] = useState<string | null>(null);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [calendarSyncing, setCalendarSyncing] = useState(false);
+  const [calendarLastSynced, setCalendarLastSynced] = useState<string | null>(null);
 
   useEffect(() => {
     const stored = loadPlannerData();
@@ -53,7 +65,44 @@ export function PlannerViewer() {
     setZoom(stored.zoom || fitZoom());
     setTool(stored.tool);
     setAnnotations(stored.annotations);
+
+    const feedUrl = loadCalendarFeedUrl();
+    const cache = loadCalendarCache();
+    if (feedUrl) setCalendarFeedUrl(feedUrl);
+    if (cache) {
+      setCalendarEvents(cache.events);
+      setCalendarLastSynced(cache.fetchedAt);
+    }
   }, []);
+
+  const syncCalendar = useCallback(async (feedUrl: string) => {
+    setCalendarSyncing(true);
+    try {
+      const response = await fetch("/api/calendar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ feedUrl }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "Calendar sync failed");
+      }
+      setCalendarEvents(data.events);
+      setCalendarLastSynced(data.fetchedAt);
+      saveCalendarCache({ events: data.events, fetchedAt: data.fetchedAt });
+    } finally {
+      setCalendarSyncing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!calendarFeedUrl || loading) return;
+    void syncCalendar(calendarFeedUrl);
+    const interval = window.setInterval(() => {
+      void syncCalendar(calendarFeedUrl);
+    }, 15 * 60 * 1000);
+    return () => window.clearInterval(interval);
+  }, [calendarFeedUrl, loading, syncCalendar]);
 
   useEffect(() => {
     let cancelled = false;
@@ -203,6 +252,26 @@ export function PlannerViewer() {
         onExport={handleExport}
         onReset={handleReset}
         hasSelection={Boolean(selectedId)}
+        calendarFeedUrl={calendarFeedUrl}
+        calendarEventCount={calendarEvents.length}
+        calendarSyncing={calendarSyncing}
+        calendarLastSynced={calendarLastSynced}
+        onCalendarSave={async (url) => {
+          saveCalendarFeedUrl(url);
+          setCalendarFeedUrl(url);
+          await syncCalendar(url);
+        }}
+        onCalendarDisconnect={() => {
+          saveCalendarFeedUrl(null);
+          clearCalendarCache();
+          setCalendarFeedUrl(null);
+          setCalendarEvents([]);
+          setCalendarLastSynced(null);
+        }}
+        onCalendarRefresh={async () => {
+          if (!calendarFeedUrl) return;
+          await syncCalendar(calendarFeedUrl);
+        }}
       />
 
       <main className="planner-stage flex flex-1 flex-col items-center px-4 py-6">
@@ -237,6 +306,7 @@ export function PlannerViewer() {
               onUpdateAnnotation={handleUpdateAnnotation}
               onSelectAnnotation={setSelectedId}
               onToggleCheckbox={handleToggleCheckbox}
+              calendarEvents={calendarEvents}
             />
 
             <p className="text-muted-foreground mt-4 max-w-2xl text-center text-xs sm:text-sm">
