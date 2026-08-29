@@ -12,25 +12,25 @@ export function CalendarOverlay({ cells, events }: CalendarOverlayProps) {
   return (
     <div className="pointer-events-none absolute inset-0 z-20">
       {cells.map((cell, index) => {
-        const dayEvents = eventsForDate(events, cell.date).slice(0, 4);
+        const dayEvents = eventsForDate(events, cell.date).slice(0, 3);
         if (!dayEvents.length) return null;
 
         return (
           <div
             key={`${cell.date}-${index}`}
-            className="absolute flex flex-col justify-start overflow-hidden"
+            className="absolute flex flex-col items-center justify-center gap-px overflow-hidden px-0.5"
             style={{
               left: `${cell.x}%`,
-              top: `${cell.y + 2.5}%`,
+              top: `${cell.y + 3}%`,
               width: `${cell.width}%`,
-              height: `${cell.height - 1}%`,
+              height: `${Math.max(cell.height - 2, 6)}%`,
             }}
           >
             {dayEvents.map((event) => (
               <div
                 key={`${cell.date}-${event.id}`}
-                className="calendar-event mb-px truncate rounded-sm px-0.5 py-px text-[8px] leading-tight font-semibold sm:text-[9px]"
-                title={`${event.summary} (${cell.date})`}
+                className="calendar-event w-full truncate rounded-sm px-0.5 py-px text-center text-[7px] leading-tight font-semibold sm:text-[8px]"
+                title={`${event.summary} — ${cell.date}`}
               >
                 {event.summary}
               </div>
