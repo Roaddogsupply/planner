@@ -45,6 +45,10 @@ type LinkOverlay = {
   uri?: string;
 };
 
+function toPercent(value: number, total: number) {
+  return (value / total) * 100;
+}
+
 function getAnnotationLinkUrl(annotation: { url?: string; unsafeUrl?: string }) {
   return annotation.url || annotation.unsafeUrl || null;
 }
