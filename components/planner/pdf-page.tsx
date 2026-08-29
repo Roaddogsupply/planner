@@ -456,8 +456,8 @@ export function PdfPage({
             <div
               key={annotation.id}
               className={cn(
-                "absolute z-10 overflow-hidden rounded-sm",
-                isSelected && "ring-2 ring-primary ring-offset-1",
+                "absolute z-10",
+                isSelected && "ring-2 ring-primary/70",
               )}
               style={{
                 left: `${annotation.x}%`,
@@ -472,7 +472,7 @@ export function PdfPage({
               <img
                 src={annotation.src}
                 alt="Custom planner image"
-                className="pointer-events-none h-full w-full object-contain"
+                className="pointer-events-none block h-full w-full"
                 draggable={false}
               />
               {isSelected && (

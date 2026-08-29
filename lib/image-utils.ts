@@ -24,8 +24,16 @@ export async function compressImageFile(file: File, maxDimension = 1200): Promis
         return;
       }
 
+      const preserveAlpha = file.type === "image/png" || file.type === "image/webp";
+      if (!preserveAlpha) {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, width, height);
+      }
+
       ctx.drawImage(image, 0, 0, width, height);
-      resolve(canvas.toDataURL("image/jpeg", 0.82));
+      resolve(
+        canvas.toDataURL(preserveAlpha ? "image/png" : "image/jpeg", preserveAlpha ? undefined : 0.82),
+      );
     };
 
     image.onerror = () => {
@@ -39,5 +47,5 @@ export async function compressImageFile(file: File, maxDimension = 1200): Promis
 
 export function imageAspectHeightPercent(widthPercent: number, aspectRatio: number) {
   // aspectRatio = naturalWidth / naturalHeight
-  return widthPercent / aspectRatio / (816 / 595);
+  return (widthPercent / aspectRatio) * (816 / 595);
 }
