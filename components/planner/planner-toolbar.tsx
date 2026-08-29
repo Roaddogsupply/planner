@@ -6,6 +6,8 @@ import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import type { PlannerTool } from "@/lib/annotations";
+import { TextStyleControls } from "@/components/planner/text-style-controls";
+import type { TextStyle } from "@/lib/text-styles";
 import { CalendarSettings } from "@/components/planner/calendar-settings";
 import {
   ChevronLeft,
@@ -24,13 +26,14 @@ type PlannerToolbarProps = {
   totalPages: number;
   zoom: number;
   tool: PlannerTool;
-  fontSize: number;
+  textStyle: TextStyle;
+  editingSelectedText: boolean;
   savedLabel: string;
   restoreLink: string;
   onPageChange: (page: number) => void;
   onZoomChange: (zoom: number) => void;
   onToolChange: (tool: PlannerTool) => void;
-  onFontSizeChange: (fontSize: number) => void;
+  onTextStyleChange: (patch: Partial<TextStyle>) => void;
   onDeleteSelected: () => void;
   onExport: () => void;
   onReset: () => void;
@@ -54,13 +57,14 @@ export function PlannerToolbar({
   totalPages,
   zoom,
   tool,
-  fontSize,
+  textStyle,
+  editingSelectedText,
   savedLabel,
   restoreLink,
   onPageChange,
   onZoomChange,
   onToolChange,
-  onFontSizeChange,
+  onTextStyleChange,
   onDeleteSelected,
   onExport,
   onReset,
@@ -210,15 +214,11 @@ export function PlannerToolbar({
             onRefresh={onCalendarRefresh}
           />
 
-          {tool === "text" && (
-            <Input
-              type="number"
-              min={10}
-              max={28}
-              value={fontSize}
-              onChange={(event) => onFontSizeChange(Number(event.target.value) || 14)}
-              className="h-8 w-16"
-              aria-label="Font size"
+          {(tool === "text" || editingSelectedText) && (
+            <TextStyleControls
+              style={textStyle}
+              onChange={onTextStyleChange}
+              editingSelected={editingSelectedText}
             />
           )}
 

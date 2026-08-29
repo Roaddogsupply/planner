@@ -16,6 +16,8 @@ import {
   isImageAnnotation,
   isTextAnnotation,
 } from "@/lib/annotations";
+import { fontFamilyCss } from "@/lib/text-styles";
+import type { TextStyle } from "@/lib/text-styles";
 import { cn } from "@/lib/utils";
 import { Check } from "lucide-react";
 import { parseCalendarDayFromUri, prepareCalendarCells } from "@/lib/calendar-cells";
@@ -29,7 +31,7 @@ type PdfPageProps = {
   tool: PlannerTool;
   annotations: PlannerAnnotation[];
   selectedId: string | null;
-  fontSize: number;
+  textStyle: TextStyle;
   onPageNavigate: (page: number) => void;
   onAddAnnotation: (annotation: PlannerAnnotation) => void;
   onUpdateAnnotation: (id: string, patch: Record<string, unknown>) => void;
@@ -112,7 +114,7 @@ export function PdfPage({
   tool,
   annotations,
   selectedId,
-  fontSize,
+  textStyle,
   onPageNavigate,
   onAddAnnotation,
   onUpdateAnnotation,
@@ -317,7 +319,7 @@ export function PdfPage({
 
     if (tool === "image") return;
 
-    const text = createTextAnnotation(pageNumber, point.x, point.y - 1.2, fontSize);
+    const text = createTextAnnotation(pageNumber, point.x, point.y - 1.2, textStyle);
     onAddAnnotation(text);
     onSelectAnnotation(text.id);
   };
@@ -459,6 +461,8 @@ export function PdfPage({
                 top: `${annotation.y}%`,
                 width: `${annotation.width}%`,
                 fontSize: `${annotation.fontSize}px`,
+                fontFamily: fontFamilyCss(annotation.fontFamily),
+                color: annotation.color,
                 lineHeight: 1.2,
               }}
               onMouseDown={(event) => handleTextMouseDown(event, annotation)}
@@ -471,11 +475,21 @@ export function PdfPage({
                   onChange={(event) =>
                     onUpdateAnnotation(annotation.id, { text: event.target.value })
                   }
-                  className="field-sizing-content w-full resize-none bg-transparent text-foreground outline-none"
+                  className="field-sizing-content w-full resize-none bg-transparent outline-none"
+                  style={{
+                    fontFamily: fontFamilyCss(annotation.fontFamily),
+                    color: annotation.color,
+                  }}
                   rows={1}
                 />
               ) : (
-                <span className="whitespace-pre-wrap break-words text-foreground">
+                <span
+                  className="whitespace-pre-wrap break-words"
+                  style={{
+                    fontFamily: fontFamilyCss(annotation.fontFamily),
+                    color: annotation.color,
+                  }}
+                >
                   {annotation.text}
                 </span>
               )}

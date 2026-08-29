@@ -1,3 +1,11 @@
+import {
+  DEFAULT_TEXT_STYLE,
+  isPlannerFontId,
+  normalizeTextStyle,
+  type PlannerFontId,
+  type TextStyle,
+} from "@/lib/text-styles";
+
 export type TextAnnotation = {
   kind: "text";
   id: string;
@@ -6,6 +14,8 @@ export type TextAnnotation = {
   y: number;
   text: string;
   fontSize: number;
+  fontFamily: PlannerFontId;
+  color: string;
   width: number;
 };
 
@@ -40,6 +50,7 @@ export type PlannerData = {
   lastPage: number;
   zoom: number;
   tool: PlannerTool;
+  textStyle?: TextStyle;
 };
 
 const STORAGE_KEY = "road-dog-planner-data";
@@ -61,6 +72,11 @@ function normalizeAnnotation(raw: Record<string, unknown>): PlannerAnnotation | 
     return raw as CheckboxAnnotation;
   }
   if (raw.kind === "text" || raw.text !== undefined) {
+    const style = normalizeTextStyle({
+      fontSize: Number(raw.fontSize),
+      fontFamily: isPlannerFontId(raw.fontFamily) ? raw.fontFamily : undefined,
+      color: typeof raw.color === "string" ? raw.color : undefined,
+    });
     return {
       kind: "text",
       id: String(raw.id),
@@ -68,7 +84,9 @@ function normalizeAnnotation(raw: Record<string, unknown>): PlannerAnnotation | 
       x: Number(raw.x),
       y: Number(raw.y),
       text: String(raw.text ?? ""),
-      fontSize: Number(raw.fontSize ?? 14),
+      fontSize: style.fontSize,
+      fontFamily: style.fontFamily,
+      color: style.color,
       width: Number(raw.width ?? 35),
     };
   }
@@ -102,6 +120,7 @@ export function loadPlannerData(): PlannerData {
       lastPage: parsed.lastPage ?? 1,
       zoom: parsed.zoom ?? 1,
       tool: parsed.tool ?? "text",
+      textStyle: normalizeTextStyle(parsed.textStyle),
     };
   } catch {
     return fallback;
@@ -117,8 +136,9 @@ export function createTextAnnotation(
   page: number,
   x: number,
   y: number,
-  fontSize = 14,
+  style: Partial<TextStyle> = {},
 ): TextAnnotation {
+  const normalized = normalizeTextStyle(style);
   return {
     kind: "text",
     id: crypto.randomUUID(),
@@ -126,7 +146,9 @@ export function createTextAnnotation(
     x,
     y,
     text: "",
-    fontSize,
+    fontSize: normalized.fontSize,
+    fontFamily: normalized.fontFamily,
+    color: normalized.color,
     width: 40,
   };
 }

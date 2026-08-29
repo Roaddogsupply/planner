@@ -5,12 +5,14 @@ import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { loadPlannerDocument, type LoadProgress } from "@/lib/pdf";
 import {
   isImageAnnotation,
+  isTextAnnotation,
   loadPlannerData,
   savePlannerData,
   type ImageAnnotation,
   type PlannerAnnotation,
   type PlannerTool,
 } from "@/lib/annotations";
+import { DEFAULT_TEXT_STYLE, isPlannerFontId, normalizeTextStyle, type TextStyle } from "@/lib/text-styles";
 import { PdfPage } from "@/components/planner/pdf-page";
 import { PlannerToolbar } from "@/components/planner/planner-toolbar";
 import type { CalendarEvent } from "@/lib/calendar-types";
@@ -61,7 +63,7 @@ export function PlannerViewer() {
   const [page, setPage] = useState(1);
   const [zoom, setZoom] = useState(1);
   const [tool, setTool] = useState<PlannerTool>("text");
-  const [fontSize, setFontSize] = useState(14);
+  const [textStyle, setTextStyle] = useState<TextStyle>(DEFAULT_TEXT_STYLE);
   const [annotations, setAnnotations] = useState<PlannerAnnotation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [savedLabel, setSavedLabel] = useState("Loading…");
@@ -96,12 +98,14 @@ export function PlannerViewer() {
         setZoom(cloud.zoom || fitZoom());
         setTool(cloud.tool);
         setAnnotations(cloud.annotations);
+        setTextStyle(normalizeTextStyle(cloud.textStyle));
         savePlannerData({
           version: 3,
           annotations: cloud.annotations,
           lastPage: cloud.lastPage,
           zoom: cloud.zoom,
           tool: cloud.tool,
+          textStyle: normalizeTextStyle(cloud.textStyle),
         });
 
         if (cloud.calendarFeedUrl) {
@@ -115,6 +119,7 @@ export function PlannerViewer() {
         setZoom(local.zoom || fitZoom());
         setTool(local.tool);
         setAnnotations(local.annotations);
+        setTextStyle(normalizeTextStyle(local.textStyle));
         if (feedUrl) setCalendarFeedUrl(feedUrl);
 
         if (local.annotations.length > 0 || local.lastPage > 1) {
@@ -205,17 +210,31 @@ export function PlannerViewer() {
     if (loading || !hydrated || !plannerId) return;
 
     const snapshot = createCloudSnapshot(
-      { version: 3, annotations, lastPage: page, zoom, tool },
+      { version: 3, annotations, lastPage: page, zoom, tool, textStyle },
       calendarFeedUrl,
     );
 
-    savePlannerData({ version: 3, annotations, lastPage: page, zoom, tool });
+    savePlannerData({ version: 3, annotations, lastPage: page, zoom, tool, textStyle });
     scheduleCloudSave(plannerId, snapshot, (status) => {
       if (status === "saving") setSavedLabel("Saving…");
       if (status === "saved") setSavedLabel("Saved to cloud");
       if (status === "offline") setSavedLabel("Saved on this device");
     });
-  }, [annotations, page, zoom, tool, loading, hydrated, plannerId, calendarFeedUrl]);
+  }, [annotations, page, zoom, tool, textStyle, loading, hydrated, plannerId, calendarFeedUrl]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const item = annotations.find((annotation) => annotation.id === selectedId);
+    if (item && isTextAnnotation(item)) {
+      setTextStyle(
+        normalizeTextStyle({
+          fontSize: item.fontSize,
+          fontFamily: isPlannerFontId(item.fontFamily) ? item.fontFamily : undefined,
+          color: item.color,
+        }),
+      );
+    }
+  }, [selectedId]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -255,6 +274,25 @@ export function PlannerViewer() {
     );
   }, []);
 
+  const handleTextStyleChange = useCallback(
+    (patch: Partial<TextStyle>) => {
+      setTextStyle((current) => normalizeTextStyle({ ...current, ...patch }));
+      if (!selectedId) return;
+      setAnnotations((current) =>
+        current.map((item) =>
+          item.id === selectedId && isTextAnnotation(item)
+            ? { ...item, ...patch }
+            : item,
+        ),
+      );
+    },
+    [selectedId],
+  );
+
+  const selectedText = annotations.find(
+    (item) => item.id === selectedId && isTextAnnotation(item),
+  );
+
   const handleToggleCheckbox = useCallback((id: string) => {
     setAnnotations((current) =>
       current.map((item) =>
@@ -267,7 +305,7 @@ export function PlannerViewer() {
 
   const handleExport = () => {
     const blob = new Blob(
-      [JSON.stringify({ version: 3, annotations, lastPage: page, zoom, tool }, null, 2)],
+      [JSON.stringify({ version: 3, annotations, lastPage: page, zoom, tool, textStyle }, null, 2)],
       { type: "application/json" },
     );
     const url = URL.createObjectURL(blob);
@@ -286,10 +324,10 @@ export function PlannerViewer() {
     setAnnotations([]);
     setSelectedId(null);
     const cleared = createCloudSnapshot(
-      { version: 3, annotations: [], lastPage: page, zoom, tool },
+      { version: 3, annotations: [], lastPage: page, zoom, tool, textStyle },
       calendarFeedUrl,
     );
-    savePlannerData({ version: 3, annotations: [], lastPage: page, zoom, tool });
+    savePlannerData({ version: 3, annotations: [], lastPage: page, zoom, tool, textStyle });
     void savePlannerToCloud(plannerId, cleared);
   };
 
@@ -345,7 +383,7 @@ export function PlannerViewer() {
         : "Choose Image, pick a photo, then click the page.";
     }
     if (tool === "text") {
-      return "Click tabs and index links to navigate. Click any line or box to type on it.";
+      return "Use the toolbar to pick font, size, and color — then click any line or box to type.";
     }
     return "Check mode: click on » marks or checklist rows to add a checkmark. Tabs still work.";
   }, [page, tool, pendingImage, calendarFeedUrl]);
@@ -379,7 +417,8 @@ export function PlannerViewer() {
         totalPages={totalPages}
         zoom={zoom}
         tool={tool}
-        fontSize={fontSize}
+        textStyle={textStyle}
+        editingSelectedText={Boolean(selectedText)}
         savedLabel={savedLabel}
         restoreLink={restoreLink}
         onPageChange={setPage}
@@ -389,7 +428,7 @@ export function PlannerViewer() {
           setSelectedId(null);
           if (next !== "image") setPendingImage(null);
         }}
-        onFontSizeChange={setFontSize}
+        onTextStyleChange={handleTextStyleChange}
         onDeleteSelected={() => {
           if (!selectedId) return;
           setAnnotations((current) => current.filter((item) => item.id !== selectedId));
@@ -457,7 +496,7 @@ export function PlannerViewer() {
               tool={tool}
               annotations={annotations}
               selectedId={selectedId}
-              fontSize={fontSize}
+              textStyle={textStyle}
               onPageNavigate={setPage}
               onAddAnnotation={handleAddAnnotation}
               onUpdateAnnotation={handleUpdateAnnotation}
