@@ -45,8 +45,8 @@ type LinkOverlay = {
   uri?: string;
 };
 
-function toPercent(value: number, total: number) {
-  return (value / total) * 100;
+function getAnnotationLinkUrl(annotation: { url?: string; unsafeUrl?: string }) {
+  return annotation.url || annotation.unsafeUrl || null;
 }
 
 function expandLink(link: LinkOverlay, padding = 0.4): LinkOverlay {
@@ -152,12 +152,14 @@ export function PdfPage({
             height: toPercent(height, viewport.height),
           };
 
-          if (annotation.url) {
-            const calendarDay = parseCalendarDayFromUri(annotation.url, base);
+          const linkUrl = getAnnotationLinkUrl(annotation);
+
+          if (linkUrl) {
+            const calendarDay = parseCalendarDayFromUri(linkUrl, base);
             if (calendarDay) {
               dayCells.push(calendarDay);
             }
-            pageLinks.push(expandLink({ ...base, uri: annotation.url }));
+            pageLinks.push(expandLink({ ...base, uri: linkUrl }));
           } else if (annotation.dest) {
             const dest =
               typeof annotation.dest === "string"

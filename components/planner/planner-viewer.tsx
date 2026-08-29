@@ -14,7 +14,6 @@ import { PlannerToolbar } from "@/components/planner/planner-toolbar";
 import type { CalendarEvent } from "@/lib/calendar-types";
 import {
   clearCalendarCache,
-  eventsOnPage,
   loadCalendarCache,
   loadCalendarFeedUrl,
   saveCalendarCache,
