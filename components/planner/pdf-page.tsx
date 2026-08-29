@@ -7,7 +7,7 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
+import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
 import type { TextAnnotation } from "@/lib/annotations";
 import { cn } from "@/lib/utils";
 
@@ -56,63 +56,82 @@ export function PdfPage({
     null,
   );
 
-  const renderPage = useCallback(async () => {
-    setLoading(true);
-    let page: PDFPageProxy | null = null;
+  useEffect(() => {
+    let cancelled = false;
+    let renderTask: { cancel: () => void; promise: Promise<void> } | null = null;
 
-    try {
-      page = await pdf.getPage(pageNumber);
-      const viewport = page.getViewport({ scale });
-      const canvas = canvasRef.current;
-      if (!canvas) return;
+    async function drawPage() {
+      setLoading(true);
 
-      const context = canvas.getContext("2d");
-      if (!context) return;
+      try {
+        const page = await pdf.getPage(pageNumber);
+        if (cancelled) return;
 
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      setPageSize({ width: viewport.width, height: viewport.height });
+        const viewport = page.getViewport({ scale });
+        const canvas = canvasRef.current;
+        if (!canvas) return;
 
-      await page.render({ canvas, canvasContext: context, viewport }).promise;
+        const context = canvas.getContext("2d");
+        if (!context) return;
 
-      const pageLinks: LinkOverlay[] = [];
-      for (const annotation of await page.getAnnotations()) {
-        if (annotation.subtype !== "Link") continue;
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        setPageSize({ width: viewport.width, height: viewport.height });
 
-        const rect = annotation.rect as [number, number, number, number];
-        const [vx1, vy1] = viewport.convertToViewportPoint(rect[0], rect[1]);
-        const [vx2, vy2] = viewport.convertToViewportPoint(rect[2], rect[3]);
-        const left = Math.min(vx1, vx2);
-        const top = Math.min(vy1, vy2);
-        const width = Math.abs(vx2 - vx1);
-        const height = Math.abs(vy2 - vy1);
+        renderTask = page.render({ canvas, canvasContext: context, viewport });
+        await renderTask.promise;
+        if (cancelled) return;
 
-        if (annotation.url) {
-          pageLinks.push({ left, top, width, height, uri: annotation.url });
-        } else if (annotation.dest) {
-          const dest =
-            typeof annotation.dest === "string"
-              ? await pdf.getDestination(annotation.dest)
-              : annotation.dest;
-          if (dest) {
-            const ref = dest[0];
-            if (ref) {
-              const targetPage = (await pdf.getPageIndex(ref)) + 1;
-              pageLinks.push({ left, top, width, height, page: targetPage });
+        const pageLinks: LinkOverlay[] = [];
+        for (const annotation of await page.getAnnotations()) {
+          if (annotation.subtype !== "Link") continue;
+
+          const rect = annotation.rect as [number, number, number, number];
+          const [vx1, vy1] = viewport.convertToViewportPoint(rect[0], rect[1]);
+          const [vx2, vy2] = viewport.convertToViewportPoint(rect[2], rect[3]);
+          const left = Math.min(vx1, vx2);
+          const top = Math.min(vy1, vy2);
+          const width = Math.abs(vx2 - vx1);
+          const height = Math.abs(vy2 - vy1);
+
+          if (annotation.url) {
+            pageLinks.push({ left, top, width, height, uri: annotation.url });
+          } else if (annotation.dest) {
+            const dest =
+              typeof annotation.dest === "string"
+                ? await pdf.getDestination(annotation.dest)
+                : annotation.dest;
+            if (dest) {
+              const ref = dest[0];
+              if (ref) {
+                const targetPage = (await pdf.getPageIndex(ref)) + 1;
+                pageLinks.push({ left, top, width, height, page: targetPage });
+              }
             }
           }
         }
+
+        if (!cancelled) {
+          setLinks(pageLinks);
+        }
+      } catch (renderError) {
+        if (!cancelled) {
+          console.error(renderError);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
-
-      setLinks(pageLinks);
-    } finally {
-      setLoading(false);
     }
-  }, [pdf, pageNumber, scale]);
 
-  useEffect(() => {
-    void renderPage();
-  }, [renderPage]);
+    void drawPage();
+
+    return () => {
+      cancelled = true;
+      renderTask?.cancel();
+    };
+  }, [pdf, pageNumber, scale]);
 
   const handleCanvasClick = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (!editMode || !containerRef.current) return;
