@@ -14,10 +14,8 @@ export const DEFAULT_TEXT_STYLE: TextStyle = {
 
 export const TEXT_COLOR_PRESETS = [
   { id: "black", label: "Black", value: "#2d2a26" },
-  { id: "slate", label: "Slate", value: "#475569" },
   { id: "blue", label: "Blue", value: "#2563eb" },
   { id: "red", label: "Red", value: "#dc2626" },
-  { id: "green", label: "Green", value: "#16a34a" },
   { id: "purple", label: "Purple", value: "#7c3aed" },
 ] as const;
 
