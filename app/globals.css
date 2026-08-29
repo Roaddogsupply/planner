@@ -179,3 +179,28 @@
 .planner-text-color-swatch {
   box-shadow: inset 0 0 0 1px oklch(0 0 0 / 12%);
 }
+
+.planner-color-picker {
+  background: var(--card);
+  border-color: oklch(0.88 0.02 290);
+}
+
+.planner-color-picker .react-colorful {
+  width: 220px;
+  height: 160px;
+}
+
+.planner-color-picker .react-colorful__saturation {
+  border-radius: 0.5rem 0.5rem 0 0;
+}
+
+.planner-color-picker .react-colorful__hue {
+  height: 14px;
+  border-radius: 0 0 0.5rem 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.planner-color-picker .react-colorful__pointer {
+  width: 18px;
+  height: 18px;
+}

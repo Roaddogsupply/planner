@@ -12,7 +12,8 @@ import {
   type PlannerAnnotation,
   type PlannerTool,
 } from "@/lib/annotations";
-import { DEFAULT_TEXT_STYLE, isPlannerFontId, normalizeTextStyle, type TextStyle } from "@/lib/text-styles";
+import { DEFAULT_TEXT_STYLE, normalizeTextStyle, type TextStyle } from "@/lib/text-styles";
+import { normalizeFontFamily } from "@/lib/google-fonts";
 import { PdfPage } from "@/components/planner/pdf-page";
 import { PlannerToolbar } from "@/components/planner/planner-toolbar";
 import type { CalendarEvent } from "@/lib/calendar-types";
@@ -32,6 +33,7 @@ import {
   scheduleCloudSave,
 } from "@/lib/planner-cloud-sync";
 import { buildRestoreLink, resolvePlannerId } from "@/lib/planner-sync-id";
+import { preloadDefaultFonts } from "@/lib/google-fonts";
 
 function formatLoadingMessage(progress: LoadProgress | null) {
   if (!progress) return "Starting planner…";
@@ -82,6 +84,7 @@ export function PlannerViewer() {
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    preloadDefaultFonts();
     const id = resolvePlannerId();
     setPlannerId(id);
     setRestoreLink(buildRestoreLink(id));
@@ -229,7 +232,7 @@ export function PlannerViewer() {
       setTextStyle(
         normalizeTextStyle({
           fontSize: item.fontSize,
-          fontFamily: isPlannerFontId(item.fontFamily) ? item.fontFamily : undefined,
+          fontFamily: normalizeFontFamily(item.fontFamily),
           color: item.color,
         }),
       );

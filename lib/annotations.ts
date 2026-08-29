@@ -1,10 +1,9 @@
 import {
   DEFAULT_TEXT_STYLE,
-  isPlannerFontId,
   normalizeTextStyle,
-  type PlannerFontId,
   type TextStyle,
 } from "@/lib/text-styles";
+import { normalizeFontFamily } from "@/lib/google-fonts";
 
 export type TextAnnotation = {
   kind: "text";
@@ -14,7 +13,7 @@ export type TextAnnotation = {
   y: number;
   text: string;
   fontSize: number;
-  fontFamily: PlannerFontId;
+  fontFamily: string;
   color: string;
   width: number;
 };
@@ -74,7 +73,7 @@ function normalizeAnnotation(raw: Record<string, unknown>): PlannerAnnotation | 
   if (raw.kind === "text" || raw.text !== undefined) {
     const style = normalizeTextStyle({
       fontSize: Number(raw.fontSize),
-      fontFamily: isPlannerFontId(raw.fontFamily) ? raw.fontFamily : undefined,
+      fontFamily: normalizeFontFamily(raw.fontFamily),
       color: typeof raw.color === "string" ? raw.color : undefined,
     });
     return {

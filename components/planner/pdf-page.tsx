@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
@@ -16,7 +17,7 @@ import {
   isImageAnnotation,
   isTextAnnotation,
 } from "@/lib/annotations";
-import { fontFamilyCss } from "@/lib/text-styles";
+import { fontFamilyCss, loadGoogleFont } from "@/lib/google-fonts";
 import type { TextStyle } from "@/lib/text-styles";
 import { cn } from "@/lib/utils";
 import { Check } from "lucide-react";
@@ -371,6 +372,21 @@ export function PdfPage({
   }, [onUpdateAnnotation]);
 
   const pageAnnotations = annotations.filter((item) => item.page === pageNumber);
+  const pageTextFontFamilies = useMemo(
+    () =>
+      pageAnnotations
+        .filter(isTextAnnotation)
+        .map((item) => item.fontFamily)
+        .join("|"),
+    [pageAnnotations],
+  );
+
+  useEffect(() => {
+    for (const family of pageTextFontFamilies.split("|").filter(Boolean)) {
+      loadGoogleFont(family);
+    }
+  }, [pageTextFontFamilies]);
+
   const pageImages = pageAnnotations.filter(isImageAnnotation);
   const pageOthers = pageAnnotations.filter((item) => !isImageAnnotation(item));
 
