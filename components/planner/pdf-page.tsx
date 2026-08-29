@@ -16,7 +16,7 @@ import {
 } from "@/lib/annotations";
 import { cn } from "@/lib/utils";
 import { Check } from "lucide-react";
-import { parseCalendarDayFromUri } from "@/lib/calendar-cells";
+import { dedupeCalendarCells, parseCalendarDayFromUri } from "@/lib/calendar-cells";
 import type { CalendarDayCell, CalendarEvent } from "@/lib/calendar-types";
 import { CalendarOverlay } from "@/components/planner/calendar-overlay";
 
@@ -175,7 +175,7 @@ export function PdfPage({
 
         if (!cancelled) {
           setLinks(pageLinks);
-          setCalendarCells(dayCells);
+          setCalendarCells(dedupeCalendarCells(dayCells));
         }
       } catch (renderError) {
         if (!cancelled) {

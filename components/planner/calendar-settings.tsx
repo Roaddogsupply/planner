@@ -99,10 +99,14 @@ export function CalendarSettings({
             <p className="font-medium">How to get the link on Mac:</p>
             <ol className="text-muted-foreground mt-1 list-decimal space-y-1 pl-4">
               <li>Open the Calendar app</li>
-              <li>Right-click the calendar you want → Settings or Get Info</li>
-              <li>Enable sharing and copy the subscription / iCal URL</li>
+              <li>Right-click your calendar → Settings</li>
+              <li>Turn on Public Calendar and copy the link</li>
               <li>Paste it above — treat it like a password</li>
             </ol>
+            <p className="text-muted-foreground mt-2">
+              After syncing, open a <strong>monthly calendar page</strong> (click JAN, FEB, etc.
+              on the left tabs) to see your events on each day.
+            </p>
           </div>
 
           {feedUrl && (

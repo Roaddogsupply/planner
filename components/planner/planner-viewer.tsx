@@ -14,6 +14,7 @@ import { PlannerToolbar } from "@/components/planner/planner-toolbar";
 import type { CalendarEvent } from "@/lib/calendar-types";
 import {
   clearCalendarCache,
+  eventsOnPage,
   loadCalendarCache,
   loadCalendarFeedUrl,
   saveCalendarCache,
@@ -257,6 +258,7 @@ export function PlannerViewer() {
         calendarSyncing={calendarSyncing}
         calendarLastSynced={calendarLastSynced}
         onCalendarSave={async (url) => {
+          clearCalendarCache();
           saveCalendarFeedUrl(url);
           setCalendarFeedUrl(url);
           await syncCalendar(url);
@@ -310,9 +312,11 @@ export function PlannerViewer() {
             />
 
             <p className="text-muted-foreground mt-4 max-w-2xl text-center text-xs sm:text-sm">
-              {tool === "text"
-                ? "Click tabs and index links to navigate. Click any line or box to type on it."
-                : "Check mode: click on » marks or checklist rows to add a checkmark. Tabs still work."}
+              {calendarFeedUrl
+                ? "Events show on monthly calendar pages — click a month tab (JAN, FEB, etc.) on the left edge."
+                : tool === "text"
+                  ? "Click tabs and index links to navigate. Click any line or box to type on it."
+                  : "Check mode: click on » marks or checklist rows to add a checkmark. Tabs still work."}
             </p>
           </>
         )}

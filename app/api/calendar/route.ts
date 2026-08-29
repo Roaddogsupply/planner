@@ -25,12 +25,56 @@ function isAllowedFeedUrl(url: string) {
   }
 }
 
-function toIso(value: Date | { toISOString?: () => string } | string | undefined) {
-  if (!value) return new Date().toISOString();
-  if (value instanceof Date) return value.toISOString();
-  if (typeof value === "string") return new Date(value).toISOString();
-  if (typeof value.toISOString === "function") return value.toISOString();
-  return new Date(String(value)).toISOString();
+function formatUtcDate(value: Date) {
+  const y = value.getUTCFullYear();
+  const m = String(value.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(value.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function formatLocalDate(value: Date) {
+  const y = value.getFullYear();
+  const m = String(value.getMonth() + 1).padStart(2, "0");
+  const d = String(value.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function toIso(value: Date) {
+  return value.toISOString();
+}
+
+function parseEvent(item: Record<string, unknown>): CalendarEvent | null {
+  if (item.type !== "VEVENT") return null;
+
+  const event = item as {
+    uid?: string;
+    summary?: string | { toString(): string };
+    start?: Date;
+    end?: Date;
+    datetype?: string;
+  };
+
+  if (!(event.start instanceof Date)) return null;
+
+  const summary = event.summary?.toString() || "Busy";
+  const allDay = event.datetype === "date";
+  const startDate = allDay ? formatUtcDate(event.start) : formatLocalDate(event.start);
+  const endDate =
+    event.end instanceof Date
+      ? allDay
+        ? formatUtcDate(event.end)
+        : formatLocalDate(event.end)
+      : startDate;
+
+  return {
+    id: String(event.uid ?? `${summary}-${startDate}`),
+    summary,
+    startDate,
+    endDate,
+    allDay,
+    start: toIso(event.start),
+    end: event.end instanceof Date ? toIso(event.end) : toIso(event.start),
+  };
 }
 
 export async function POST(request: Request) {
@@ -49,34 +93,12 @@ export async function POST(request: Request) {
     const events: CalendarEvent[] = [];
 
     for (const item of Object.values(parsed)) {
-      if (!item || typeof item !== "object" || !("type" in item) || item.type !== "VEVENT") {
-        continue;
-      }
-
-      const event = item as {
-        uid?: string;
-        summary?: string | { toString(): string };
-        start?: Date | string;
-        end?: Date | string;
-        datetype?: string;
-      };
-      const summary = event.summary?.toString() || "Busy";
-      const start = toIso(event.start as Date);
-      const end = toIso(event.end as Date);
-      const allDay =
-        Boolean(event.datetype && String(event.datetype).includes("DATE")) ||
-        start.includes("T00:00:00");
-
-      events.push({
-        id: String(event.uid ?? `${summary}-${start}`),
-        summary,
-        start,
-        end,
-        allDay,
-      });
+      if (!item || typeof item !== "object") continue;
+      const event = parseEvent(item as Record<string, unknown>);
+      if (event) events.push(event);
     }
 
-    events.sort((a, b) => a.start.localeCompare(b.start));
+    events.sort((a, b) => a.startDate.localeCompare(b.startDate));
 
     return NextResponse.json({
       events,
@@ -88,7 +110,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          "Could not read that calendar link. In Apple Calendar, copy the private iCal subscription URL and try again.",
+          "Could not read that calendar link. In Apple Calendar, copy the public iCal subscription URL and try again.",
       },
       { status: 502 },
     );

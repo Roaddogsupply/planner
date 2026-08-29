@@ -21,11 +21,11 @@ Open [http://localhost:4317](http://localhost:4317) in your browser.
 
 ## How to use
 
-1. **Navigate** — Use the default mode to click planner tabs and index links.
-2. **Write** — Switch to Write mode, then click where you want to type (on a line, in a box, on a calendar day, etc.).
-3. **Move text** — Drag a text box to reposition it on the page.
-4. **Zoom** — Use the zoom slider if the page is too small or large.
-5. **Page arrows** — Use ← → keys or the toolbar to flip pages.
+1. **Navigate** — Click planner tabs and index links.
+2. **Type** — Click any line or box to type on it.
+3. **Check** — Use Check mode for checklist marks.
+4. **Calendar sync** — Click **Calendar** in the toolbar, paste your Apple iCal link, and events appear on monthly calendar pages.
+5. **Zoom** — Use the zoom slider if the page is too small or large.
 
 > **Note:** Some calendar links in the PDF use Apple Shortcuts (`shortcuts://`). Those only work on iPhone/iPad in the original PDF — on the web, use the planner pages directly.
 

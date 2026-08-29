@@ -169,7 +169,8 @@
 }
 
 .calendar-event {
-  background: oklch(0.92 0.06 290 / 90%);
-  color: oklch(0.32 0.06 290);
-  border: 1px solid oklch(0.82 0.04 290);
+  background: oklch(0.55 0.18 290 / 92%);
+  color: oklch(0.99 0 0);
+  border: 1px solid oklch(0.45 0.14 290);
+  box-shadow: 0 1px 2px oklch(0 0 0 / 15%);
 }

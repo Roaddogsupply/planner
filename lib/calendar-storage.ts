@@ -22,7 +22,12 @@ export function loadCalendarCache(): CalendarSyncResult | null {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as CalendarSyncResult;
+    const parsed = JSON.parse(raw) as CalendarSyncResult;
+    // Drop old cache shape that lacks startDate
+    if (parsed.events?.[0] && !("startDate" in parsed.events[0])) {
+      return null;
+    }
+    return parsed;
   } catch {
     return null;
   }
@@ -40,23 +45,21 @@ export function clearCalendarCache() {
 
 export function eventsForDate(events: CalendarEvent[], date: string) {
   return events.filter((event) => {
-    const eventDate = event.allDay ? event.start.slice(0, 10) : event.start.slice(0, 10);
-    if (eventDate === date) return true;
-    if (event.allDay && event.end) {
-      const endExclusive = event.end.slice(0, 10);
-      return date >= eventDate && date < endExclusive;
+    const startDate = event.startDate ?? event.start.slice(0, 10);
+    const endDate = event.endDate ?? event.end.slice(0, 10);
+
+    if (event.allDay && endDate && endDate !== startDate) {
+      return date >= startDate && date < endDate;
     }
-    return false;
+
+    return startDate === date;
   });
 }
 
-export function groupEventsByDate(events: CalendarEvent[]) {
-  const map = new Map<string, CalendarEvent[]>();
-  for (const event of events) {
-    const start = event.start.slice(0, 10);
-    const list = map.get(start) ?? [];
-    list.push(event);
-    map.set(start, list);
-  }
-  return map;
+export function eventsOnPage(events: CalendarEvent[], cells: { date: string }[]) {
+  const dates = new Set(cells.map((cell) => cell.date));
+  return events.filter((event) => {
+    const startDate = event.startDate ?? event.start.slice(0, 10);
+    return dates.has(startDate);
+  });
 }

@@ -1,9 +1,13 @@
 export type CalendarEvent = {
   id: string;
   summary: string;
+  /** Local calendar date YYYY-MM-DD when the event starts */
+  startDate: string;
+  /** For all-day events: exclusive end date YYYY-MM-DD */
+  endDate: string;
+  allDay: boolean;
   start: string;
   end: string;
-  allDay: boolean;
 };
 
 export type CalendarDayCell = {
