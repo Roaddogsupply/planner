@@ -132,6 +132,12 @@ export function PdfPage({
   const [calendarCells, setCalendarCells] = useState<CalendarDayCell[]>([]);
   const [loading, setLoading] = useState(true);
   const dragState = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null);
+  const resizeState = useRef<{
+    id: string;
+    anchorX: number;
+    anchorY: number;
+    aspect: number;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -325,6 +331,20 @@ export function PdfPage({
     onSelectAnnotation(text.id);
   };
 
+  const handleImageResizeMouseDown = (
+    event: ReactMouseEvent,
+    annotation: ImageAnnotation,
+  ) => {
+    event.stopPropagation();
+    resizeState.current = {
+      id: annotation.id,
+      anchorX: annotation.x,
+      anchorY: annotation.y,
+      aspect: annotation.width / annotation.height,
+    };
+    onSelectAnnotation(annotation.id);
+  };
+
   const handleDragMouseDown = (
     event: ReactMouseEvent,
     annotation: TextAnnotation | ImageAnnotation,
@@ -347,11 +367,34 @@ export function PdfPage({
 
   useEffect(() => {
     const handleMouseMove = (event: globalThis.MouseEvent) => {
-      if (!dragState.current || !containerRef.current) return;
+      if (!containerRef.current) return;
 
       const rect = containerRef.current.getBoundingClientRect();
       const pointerX = ((event.clientX - rect.left) / rect.width) * 100;
       const pointerY = ((event.clientY - rect.top) / rect.height) * 100;
+
+      if (resizeState.current) {
+        const { id, anchorX, anchorY, aspect } = resizeState.current;
+        let newWidth = Math.max(5, pointerX - anchorX);
+        let newHeight = newWidth / aspect;
+
+        if (anchorX + newWidth > 100) {
+          newWidth = 100 - anchorX;
+          newHeight = newWidth / aspect;
+        }
+        if (anchorY + newHeight > 100) {
+          newHeight = 100 - anchorY;
+          newWidth = newHeight * aspect;
+        }
+
+        onUpdateAnnotation(id, {
+          width: Math.max(5, newWidth),
+          height: Math.max(5, newHeight),
+        });
+        return;
+      }
+
+      if (!dragState.current) return;
 
       onUpdateAnnotation(dragState.current.id, {
         x: Math.max(0, Math.min(100, pointerX - dragState.current.offsetX)),
@@ -361,6 +404,7 @@ export function PdfPage({
 
     const handleMouseUp = () => {
       dragState.current = null;
+      resizeState.current = null;
     };
 
     window.addEventListener("mousemove", handleMouseMove);
@@ -431,6 +475,13 @@ export function PdfPage({
                 className="pointer-events-none h-full w-full object-contain"
                 draggable={false}
               />
+              {isSelected && (
+                <div
+                  className="planner-image-resize-handle absolute right-0 bottom-0 z-20 size-4 translate-x-1/2 translate-y-1/2 cursor-se-resize"
+                  title="Drag to resize"
+                  onMouseDown={(event) => handleImageResizeMouseDown(event, annotation)}
+                />
+              )}
             </div>
           );
         })}
