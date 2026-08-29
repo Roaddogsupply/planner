@@ -1,44 +1,89 @@
 "use client";
 
 import {
-  useCallback,
   useEffect,
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
-import type { TextAnnotation } from "@/lib/annotations";
+import type { CheckboxAnnotation, PlannerAnnotation, PlannerTool, TextAnnotation } from "@/lib/annotations";
+import {
+  createCheckboxAnnotation,
+  createTextAnnotation,
+  isCheckboxAnnotation,
+  isTextAnnotation,
+} from "@/lib/annotations";
 import { cn } from "@/lib/utils";
+import { Check } from "lucide-react";
 
 type PdfPageProps = {
   pdf: PDFDocumentProxy;
   pageNumber: number;
   scale: number;
-  editMode: boolean;
-  annotations: TextAnnotation[];
+  tool: PlannerTool;
+  annotations: PlannerAnnotation[];
   selectedId: string | null;
   fontSize: number;
   onPageNavigate: (page: number) => void;
-  onAddAnnotation: (annotation: TextAnnotation) => void;
-  onUpdateAnnotation: (id: string, patch: Partial<TextAnnotation>) => void;
+  onAddAnnotation: (annotation: PlannerAnnotation) => void;
+  onUpdateAnnotation: (id: string, patch: Record<string, unknown>) => void;
   onSelectAnnotation: (id: string | null) => void;
+  onToggleCheckbox: (id: string) => void;
 };
 
 type LinkOverlay = {
-  left: number;
-  top: number;
+  x: number;
+  y: number;
   width: number;
   height: number;
   page?: number;
   uri?: string;
 };
 
+function toPercent(value: number, total: number) {
+  return (value / total) * 100;
+}
+
+function expandLink(link: LinkOverlay, padding = 0.4): LinkOverlay {
+  return {
+    ...link,
+    x: Math.max(0, link.x - padding),
+    y: Math.max(0, link.y - padding),
+    width: link.width + padding * 2,
+    height: link.height + padding * 2,
+  };
+}
+
+function hitTestLink(x: number, y: number, links: LinkOverlay[]) {
+  for (const link of links) {
+    if (
+      x >= link.x &&
+      x <= link.x + link.width &&
+      y >= link.y &&
+      y <= link.y + link.height
+    ) {
+      return link;
+    }
+  }
+  return null;
+}
+
+function hitTestCheckbox(x: number, y: number, items: CheckboxAnnotation[]) {
+  for (const item of items) {
+    const half = item.size / 2;
+    if (x >= item.x - half && x <= item.x + half && y >= item.y - half && y <= item.y + half) {
+      return item;
+    }
+  }
+  return null;
+}
+
 export function PdfPage({
   pdf,
   pageNumber,
   scale,
-  editMode,
+  tool,
   annotations,
   selectedId,
   fontSize,
@@ -46,15 +91,14 @@ export function PdfPage({
   onAddAnnotation,
   onUpdateAnnotation,
   onSelectAnnotation,
+  onToggleCheckbox,
 }: PdfPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [pageSize, setPageSize] = useState({ width: 0, height: 0 });
+  const [pageSize, setPageSize] = useState({ width: 816, height: 595 });
   const [links, setLinks] = useState<LinkOverlay[]>([]);
   const [loading, setLoading] = useState(true);
-  const dragState = useRef<{ id: string; offsetX: number; offsetY: number } | null>(
-    null,
-  );
+  const dragState = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -94,8 +138,15 @@ export function PdfPage({
           const width = Math.abs(vx2 - vx1);
           const height = Math.abs(vy2 - vy1);
 
+          const base: LinkOverlay = {
+            x: toPercent(left, viewport.width),
+            y: toPercent(top, viewport.height),
+            width: toPercent(width, viewport.width),
+            height: toPercent(height, viewport.height),
+          };
+
           if (annotation.url) {
-            pageLinks.push({ left, top, width, height, uri: annotation.url });
+            pageLinks.push(expandLink({ ...base, uri: annotation.url }));
           } else if (annotation.dest) {
             const dest =
               typeof annotation.dest === "string"
@@ -105,7 +156,7 @@ export function PdfPage({
               const ref = dest[0];
               if (ref) {
                 const targetPage = (await pdf.getPageIndex(ref)) + 1;
-                pageLinks.push({ left, top, width, height, page: targetPage });
+                pageLinks.push(expandLink({ ...base, page: targetPage }));
               }
             }
           }
@@ -133,30 +184,15 @@ export function PdfPage({
     };
   }, [pdf, pageNumber, scale]);
 
-  const handleCanvasClick = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (!editMode || !containerRef.current) return;
-
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = ((event.clientX - rect.left) / rect.width) * 100;
-    const y = ((event.clientY - rect.top) / rect.height) * 100;
-
-    const annotation = {
-      id: crypto.randomUUID(),
-      page: pageNumber,
-      x,
-      y,
-      text: "",
-      fontSize,
-      width: 35,
+  const getPointerPercent = (event: ReactMouseEvent) => {
+    const rect = containerRef.current!.getBoundingClientRect();
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * 100,
+      y: ((event.clientY - rect.top) / rect.height) * 100,
     };
-
-    onAddAnnotation(annotation);
-    onSelectAnnotation(annotation.id);
   };
 
   const handleLinkClick = (link: LinkOverlay) => {
-    if (editMode) return;
-
     if (link.page) {
       onPageNavigate(link.page);
       return;
@@ -165,7 +201,7 @@ export function PdfPage({
     if (link.uri) {
       if (link.uri.startsWith("shortcuts://")) {
         window.alert(
-          "Calendar shortcuts only work in the PDF on iPhone/iPad. On the web, use the planner pages directly.",
+          "Calendar shortcuts only work in the PDF on iPhone/iPad. On the web, open monthly pages from the index or tabs.",
         );
         return;
       }
@@ -173,21 +209,64 @@ export function PdfPage({
     }
   };
 
-  const handleAnnotationMouseDown = (
-    event: ReactMouseEvent,
-    annotation: TextAnnotation,
-  ) => {
-    if (!editMode || !containerRef.current) return;
+  const handlePageClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!containerRef.current) return;
+
+    const point = getPointerPercent(event);
+    const link = hitTestLink(point.x, point.y, links);
+    if (link) {
+      handleLinkClick(link);
+      return;
+    }
+
+    const pageCheckboxes = annotations.filter(
+      (item): item is CheckboxAnnotation =>
+        isCheckboxAnnotation(item) && item.page === pageNumber,
+    );
+
+    const pageTexts = annotations.filter(
+      (item): item is TextAnnotation =>
+        isTextAnnotation(item) && item.page === pageNumber,
+    );
+
+    for (const text of pageTexts) {
+      if (
+        point.x >= text.x &&
+        point.x <= text.x + text.width &&
+        point.y >= text.y &&
+        point.y <= text.y + 4
+      ) {
+        onSelectAnnotation(text.id);
+        return;
+      }
+    }
+
+    if (tool === "checkbox") {
+      const existing = hitTestCheckbox(point.x, point.y, pageCheckboxes);
+      if (existing) {
+        onToggleCheckbox(existing.id);
+        return;
+      }
+      const checkbox = createCheckboxAnnotation(pageNumber, point.x, point.y);
+      onAddAnnotation(checkbox);
+      onSelectAnnotation(checkbox.id);
+      return;
+    }
+
+    const text = createTextAnnotation(pageNumber, point.x, point.y - 1.2, fontSize);
+    onAddAnnotation(text);
+    onSelectAnnotation(text.id);
+  };
+
+  const handleTextMouseDown = (event: ReactMouseEvent, annotation: TextAnnotation) => {
     event.stopPropagation();
+    if (!containerRef.current) return;
 
-    const rect = containerRef.current.getBoundingClientRect();
-    const pointerX = ((event.clientX - rect.left) / rect.width) * 100;
-    const pointerY = ((event.clientY - rect.top) / rect.height) * 100;
-
+    const point = getPointerPercent(event);
     dragState.current = {
       id: annotation.id,
-      offsetX: pointerX - annotation.x,
-      offsetY: pointerY - annotation.y,
+      offsetX: point.x - annotation.x,
+      offsetY: point.y - annotation.y,
     };
     onSelectAnnotation(annotation.id);
   };
@@ -221,56 +300,65 @@ export function PdfPage({
   const pageAnnotations = annotations.filter((item) => item.page === pageNumber);
 
   return (
-    <div className="relative mx-auto w-fit">
+    <div className="relative mx-auto w-full" style={{ maxWidth: pageSize.width }}>
       <div
         ref={containerRef}
         className={cn(
-          "planner-page relative shadow-2xl",
-          editMode ? "cursor-text" : "cursor-default",
+          "planner-page relative w-full select-none",
+          tool === "text" ? "cursor-text" : "cursor-crosshair",
           loading && "opacity-70",
         )}
-        onClick={handleCanvasClick}
+        style={{ aspectRatio: `${pageSize.width} / ${pageSize.height}` }}
+        onClick={handlePageClick}
       >
-        <canvas ref={canvasRef} className="block max-w-full" />
-
-        {!editMode &&
-          links.map((link, index) => (
-            <button
-              key={`${pageNumber}-link-${index}`}
-              type="button"
-              aria-label="Navigate planner link"
-              className="absolute cursor-pointer bg-transparent hover:bg-primary/10"
-              style={{
-                left: link.left,
-                top: link.top,
-                width: link.width,
-                height: link.height,
-              }}
-              onClick={() => handleLinkClick(link)}
-            />
-          ))}
+        <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
 
         {pageAnnotations.map((annotation) => {
+          if (isCheckboxAnnotation(annotation)) {
+            return (
+              <button
+                key={annotation.id}
+                type="button"
+                aria-label={annotation.checked ? "Checked" : "Unchecked"}
+                className={cn(
+                  "absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-sm border border-foreground/50 bg-background/80",
+                  annotation.checked && "bg-primary text-primary-foreground",
+                )}
+                style={{
+                  left: `${annotation.x}%`,
+                  top: `${annotation.y}%`,
+                  width: `${annotation.size}%`,
+                  height: `${annotation.size * (pageSize.width / pageSize.height)}%`,
+                }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggleCheckbox(annotation.id);
+                }}
+              >
+                {annotation.checked && <Check className="size-[70%]" strokeWidth={3} />}
+              </button>
+            );
+          }
+
           const isSelected = selectedId === annotation.id;
           return (
             <div
               key={annotation.id}
               className={cn(
-                "absolute min-h-[1.25rem] rounded-sm border border-transparent px-0.5",
-                editMode && "border-dashed",
-                isSelected && editMode && "border-primary bg-primary/5",
+                "absolute min-h-[1.1rem] rounded-sm border border-transparent px-0.5",
+                isSelected && "border-primary/60 bg-primary/5",
               )}
               style={{
                 left: `${annotation.x}%`,
                 top: `${annotation.y}%`,
                 width: `${annotation.width}%`,
                 fontSize: `${annotation.fontSize}px`,
-                lineHeight: 1.25,
+                lineHeight: 1.2,
               }}
-              onMouseDown={(event) => handleAnnotationMouseDown(event, annotation)}
+              onMouseDown={(event) => handleTextMouseDown(event, annotation)}
               onClick={(event) => event.stopPropagation()}
             >
-              {editMode && isSelected ? (
+              {isSelected ? (
                 <textarea
                   autoFocus
                   value={annotation.text}
@@ -289,13 +377,6 @@ export function PdfPage({
           );
         })}
       </div>
-
-      {pageSize.width > 0 && (
-        <p className="sr-only">
-          Page {pageNumber} rendered at {Math.round(pageSize.width)} by{" "}
-          {Math.round(pageSize.height)} pixels
-        </p>
-      )}
     </div>
   );
 }

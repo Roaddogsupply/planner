@@ -5,11 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import type { PlannerTool } from "@/lib/annotations";
 import {
   ChevronLeft,
   ChevronRight,
   Pencil,
-  MousePointer2,
+  CheckSquare,
   Trash2,
   Download,
   RotateCcw,
@@ -19,12 +20,12 @@ type PlannerToolbarProps = {
   page: number;
   totalPages: number;
   zoom: number;
-  editMode: boolean;
+  tool: PlannerTool;
   fontSize: number;
   savedLabel: string;
   onPageChange: (page: number) => void;
   onZoomChange: (zoom: number) => void;
-  onEditModeChange: (editMode: boolean) => void;
+  onToolChange: (tool: PlannerTool) => void;
   onFontSizeChange: (fontSize: number) => void;
   onDeleteSelected: () => void;
   onExport: () => void;
@@ -36,12 +37,12 @@ export function PlannerToolbar({
   page,
   totalPages,
   zoom,
-  editMode,
+  tool,
   fontSize,
   savedLabel,
   onPageChange,
   onZoomChange,
-  onEditModeChange,
+  onToolChange,
   onFontSizeChange,
   onDeleteSelected,
   onExport,
@@ -126,48 +127,46 @@ export function PlannerToolbar({
 
         <div className="flex flex-wrap items-center gap-2">
           <Button
-            variant={editMode ? "default" : "outline"}
+            variant={tool === "text" ? "default" : "outline"}
             size="sm"
-            title="Click anywhere on the page to type"
-            onClick={() => onEditModeChange(true)}
+            title="Click lines and boxes to type"
+            onClick={() => onToolChange("text")}
           >
             <Pencil />
-            Write
+            Type
           </Button>
 
           <Button
-            variant={!editMode ? "default" : "outline"}
+            variant={tool === "checkbox" ? "default" : "outline"}
             size="sm"
-            title="Use tabs and index links like the PDF"
-            onClick={() => onEditModeChange(false)}
+            title="Click to check or uncheck boxes"
+            onClick={() => onToolChange("checkbox")}
           >
-            <MousePointer2 />
-            Navigate
+            <CheckSquare />
+            Check
           </Button>
 
-          {editMode && (
-            <>
-              <Input
-                type="number"
-                min={10}
-                max={28}
-                value={fontSize}
-                onChange={(event) => onFontSizeChange(Number(event.target.value) || 14)}
-                className="h-8 w-16"
-                aria-label="Font size"
-              />
-
-              <Button
-                variant="outline"
-                size="icon-sm"
-                title="Delete selected text box"
-                onClick={onDeleteSelected}
-                disabled={!hasSelection}
-              >
-                <Trash2 />
-              </Button>
-            </>
+          {tool === "text" && (
+            <Input
+              type="number"
+              min={10}
+              max={28}
+              value={fontSize}
+              onChange={(event) => onFontSizeChange(Number(event.target.value) || 14)}
+              className="h-8 w-16"
+              aria-label="Font size"
+            />
           )}
+
+          <Button
+            variant="outline"
+            size="icon-sm"
+            title="Delete selected item"
+            onClick={onDeleteSelected}
+            disabled={!hasSelection}
+          >
+            <Trash2 />
+          </Button>
 
           <Button
             variant="outline"

@@ -6,23 +6,29 @@ import { loadPlannerDocument, type LoadProgress } from "@/lib/pdf";
 import {
   loadPlannerData,
   savePlannerData,
-  type TextAnnotation,
+  type PlannerAnnotation,
+  type PlannerTool,
 } from "@/lib/annotations";
 import { PdfPage } from "@/components/planner/pdf-page";
 import { PlannerToolbar } from "@/components/planner/planner-toolbar";
 
 function formatLoadingMessage(progress: LoadProgress | null) {
   if (!progress) return "Starting planner…";
-
   if (progress.phase === "starting") return "Starting planner…";
-
   if (progress.phase === "downloading") {
     return progress.percent > 0
       ? `Downloading planner… ${progress.percent}%`
       : "Downloading planner…";
   }
-
   return progress.percent >= 50 ? "Opening planner…" : "Preparing viewer…";
+}
+
+function fitZoom() {
+  if (typeof window === "undefined") return 1;
+  const padding = 48;
+  const scaleX = (window.innerWidth - padding) / 816;
+  const scaleY = (window.innerHeight - 160) / 595;
+  return Math.min(Math.max(Math.min(scaleX, scaleY), 0.55), 1.35);
 }
 
 export function PlannerViewer() {
@@ -35,16 +41,17 @@ export function PlannerViewer() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [zoom, setZoom] = useState(1);
-  const [editMode, setEditMode] = useState(false);
+  const [tool, setTool] = useState<PlannerTool>("text");
   const [fontSize, setFontSize] = useState(14);
-  const [annotations, setAnnotations] = useState<TextAnnotation[]>([]);
+  const [annotations, setAnnotations] = useState<PlannerAnnotation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [savedLabel, setSavedLabel] = useState("Saved locally");
 
   useEffect(() => {
     const stored = loadPlannerData();
     setPage(stored.lastPage);
-    setZoom(stored.zoom);
+    setZoom(stored.zoom || fitZoom());
+    setTool(stored.tool);
     setAnnotations(stored.annotations);
   }, []);
 
@@ -58,14 +65,9 @@ export function PlannerViewer() {
 
       try {
         const doc = await loadPlannerDocument((progress) => {
-          if (!cancelled) {
-            setLoadProgress(progress);
-          }
+          if (!cancelled) setLoadProgress(progress);
         });
-
-        if (!cancelled) {
-          setPdf(doc);
-        }
+        if (!cancelled) setPdf(doc);
       } catch (loadError) {
         if (!cancelled) {
           console.error(loadError);
@@ -76,9 +78,7 @@ export function PlannerViewer() {
           );
         }
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     }
 
@@ -90,11 +90,11 @@ export function PlannerViewer() {
 
   useEffect(() => {
     if (loading) return;
-    savePlannerData({ version: 1, annotations, lastPage: page, zoom });
+    savePlannerData({ version: 2, annotations, lastPage: page, zoom, tool });
     setSavedLabel("Saved locally");
     const timer = window.setTimeout(() => setSavedLabel("All changes saved"), 400);
     return () => window.clearTimeout(timer);
-  }, [annotations, page, zoom, loading]);
+  }, [annotations, page, zoom, tool, loading]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -112,7 +112,7 @@ export function PlannerViewer() {
       if (event.key === "ArrowRight") {
         setPage((current) => Math.min(pdf.numPages, current + 1));
       }
-      if (event.key === "Delete" && selectedId && editMode) {
+      if (event.key === "Delete" && selectedId) {
         setAnnotations((current) => current.filter((item) => item.id !== selectedId));
         setSelectedId(null);
       }
@@ -120,26 +120,33 @@ export function PlannerViewer() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [pdf, selectedId, editMode]);
+  }, [pdf, selectedId]);
 
   const totalPages = pdf?.numPages ?? 597;
 
-  const handleAddAnnotation = useCallback((annotation: TextAnnotation) => {
+  const handleAddAnnotation = useCallback((annotation: PlannerAnnotation) => {
     setAnnotations((current) => [...current, annotation]);
   }, []);
 
-  const handleUpdateAnnotation = useCallback(
-    (id: string, patch: Partial<TextAnnotation>) => {
-      setAnnotations((current) =>
-        current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
-      );
-    },
-    [],
-  );
+  const handleUpdateAnnotation = useCallback((id: string, patch: Record<string, unknown>) => {
+    setAnnotations((current) =>
+      current.map((item) => (item.id === id ? { ...item, ...patch } as PlannerAnnotation : item)),
+    );
+  }, []);
+
+  const handleToggleCheckbox = useCallback((id: string) => {
+    setAnnotations((current) =>
+      current.map((item) =>
+        item.kind === "checkbox" && item.id === id
+          ? { ...item, checked: !item.checked }
+          : item,
+      ),
+    );
+  }, []);
 
   const handleExport = () => {
     const blob = new Blob(
-      [JSON.stringify({ version: 1, annotations, lastPage: page, zoom }, null, 2)],
+      [JSON.stringify({ version: 2, annotations, lastPage: page, zoom, tool }, null, 2)],
       { type: "application/json" },
     );
     const url = URL.createObjectURL(blob);
@@ -152,12 +159,12 @@ export function PlannerViewer() {
 
   const handleReset = () => {
     const confirmed = window.confirm(
-      "Clear all typed notes from this browser? This cannot be undone.",
+      "Clear all typed notes and checkmarks from this browser? This cannot be undone.",
     );
     if (!confirmed) return;
     setAnnotations([]);
     setSelectedId(null);
-    savePlannerData({ version: 1, annotations: [], lastPage: page, zoom });
+    savePlannerData({ version: 2, annotations: [], lastPage: page, zoom, tool });
   };
 
   const statusMessage = useMemo(() => {
@@ -178,14 +185,14 @@ export function PlannerViewer() {
         page={page}
         totalPages={totalPages}
         zoom={zoom}
-        editMode={editMode}
+        tool={tool}
         fontSize={fontSize}
         savedLabel={savedLabel}
         onPageChange={setPage}
         onZoomChange={setZoom}
-        onEditModeChange={(next) => {
-          setEditMode(next);
-          if (!next) setSelectedId(null);
+        onToolChange={(next) => {
+          setTool(next);
+          setSelectedId(null);
         }}
         onFontSizeChange={setFontSize}
         onDeleteSelected={() => {
@@ -212,7 +219,6 @@ export function PlannerViewer() {
                 />
               </div>
             )}
-            <p className="text-muted-foreground mt-2 text-xs">Build v2 — large 37MB file</p>
           </div>
         )}
 
@@ -222,7 +228,7 @@ export function PlannerViewer() {
               pdf={pdf}
               pageNumber={page}
               scale={zoom}
-              editMode={editMode}
+              tool={tool}
               annotations={annotations}
               selectedId={selectedId}
               fontSize={fontSize}
@@ -230,12 +236,13 @@ export function PlannerViewer() {
               onAddAnnotation={handleAddAnnotation}
               onUpdateAnnotation={handleUpdateAnnotation}
               onSelectAnnotation={setSelectedId}
+              onToggleCheckbox={handleToggleCheckbox}
             />
 
             <p className="text-muted-foreground mt-4 max-w-2xl text-center text-xs sm:text-sm">
-              {editMode
-                ? "Write mode: click on any line or box to type. Drag text boxes to reposition them."
-                : "Navigate mode: click tabs, index links, and calendar links — just like the PDF."}
+              {tool === "text"
+                ? "Click tabs and index links to navigate. Click any line or box to type on it."
+                : "Check mode: click on » marks or checklist rows to add a checkmark. Tabs still work."}
             </p>
           </>
         )}
