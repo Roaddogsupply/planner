@@ -2,30 +2,18 @@
 
 import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
 
-type PdfJsModule = typeof import("pdfjs-dist/legacy/build/pdf.mjs");
-
-let pdfjsModule: PdfJsModule | null = null;
-
-export async function getPdfJs(): Promise<PdfJsModule> {
-  if (pdfjsModule) return pdfjsModule;
-
-  pdfjsModule = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  pdfjsModule.GlobalWorkerOptions.workerSrc =
-    `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsModule.version}/legacy/build/pdf.worker.min.mjs`;
-
-  return pdfjsModule;
-}
-
 export const PDF_URL = "/planner.pdf";
 
 export type LoadProgress = {
-  phase: "downloading" | "opening";
+  phase: "starting" | "downloading" | "opening";
   percent: number;
 };
 
 async function fetchPdfBytes(
   onProgress?: (progress: LoadProgress) => void,
 ): Promise<Uint8Array> {
+  onProgress?.({ phase: "downloading", percent: 0 });
+
   const response = await fetch(PDF_URL);
 
   if (!response.ok) {
@@ -37,6 +25,7 @@ async function fetchPdfBytes(
 
   if (!reader) {
     const buffer = await response.arrayBuffer();
+    onProgress?.({ phase: "downloading", percent: 100 });
     return new Uint8Array(buffer);
   }
 
@@ -55,6 +44,9 @@ async function fetchPdfBytes(
         phase: "downloading",
         percent: Math.min(99, Math.round((received / contentLength) * 100)),
       });
+    } else if (received > 0) {
+      // Unknown size — still show activity after first chunk arrives.
+      onProgress?.({ phase: "downloading", percent: 50 });
     }
   }
 
@@ -65,24 +57,48 @@ async function fetchPdfBytes(
     offset += chunk.length;
   }
 
+  onProgress?.({ phase: "downloading", percent: 100 });
   return data;
+}
+
+async function openPdfBytes(
+  data: Uint8Array,
+  onProgress?: (progress: LoadProgress) => void,
+): Promise<PDFDocumentProxy> {
+  onProgress?.({ phase: "opening", percent: 0 });
+
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+
+  // Same-origin worker avoids CDN/CORS hangs in preview environments.
+  pdfjs.GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.min.mjs`;
+
+  onProgress?.({ phase: "opening", percent: 50 });
+
+  const loadingTask = pdfjs.getDocument({
+    data,
+    useWorkerFetch: false,
+  });
+
+  const doc = await Promise.race([
+    loadingTask.promise,
+    new Promise<never>((_, reject) => {
+      window.setTimeout(
+        () => reject(new Error("Timed out opening planner PDF")),
+        120_000,
+      );
+    }),
+  ]);
+
+  onProgress?.({ phase: "opening", percent: 100 });
+  return doc;
 }
 
 export async function loadPlannerDocument(
   onProgress?: (progress: LoadProgress) => void,
 ): Promise<PDFDocumentProxy> {
-  const pdfjs = await getPdfJs();
+  onProgress?.({ phase: "starting", percent: 0 });
+
+  // Download first — do NOT import pdf.js until bytes are ready.
   const data = await fetchPdfBytes(onProgress);
-
-  onProgress?.({ phase: "opening", percent: 100 });
-
-  // Run on the main thread so a broken/missing worker cannot hang forever.
-  const loadingTask = pdfjs.getDocument({
-    data,
-    useWorkerFetch: false,
-    isEvalSupported: false,
-    disableWorker: true,
-  } as Parameters<typeof pdfjs.getDocument>[0]);
-
-  return loadingTask.promise;
+  return openPdfBytes(data, onProgress);
 }

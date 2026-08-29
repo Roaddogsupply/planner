@@ -12,7 +12,9 @@ import { PdfPage } from "@/components/planner/pdf-page";
 import { PlannerToolbar } from "@/components/planner/planner-toolbar";
 
 function formatLoadingMessage(progress: LoadProgress | null) {
-  if (!progress) return "Loading your planner…";
+  if (!progress) return "Starting planner…";
+
+  if (progress.phase === "starting") return "Starting planner…";
 
   if (progress.phase === "downloading") {
     return progress.percent > 0
@@ -20,13 +22,16 @@ function formatLoadingMessage(progress: LoadProgress | null) {
       : "Downloading planner…";
   }
 
-  return "Opening planner…";
+  return progress.percent >= 50 ? "Opening planner…" : "Preparing viewer…";
 }
 
 export function PlannerViewer() {
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [loading, setLoading] = useState(true);
-  const [loadProgress, setLoadProgress] = useState<LoadProgress | null>(null);
+  const [loadProgress, setLoadProgress] = useState<LoadProgress>({
+    phase: "starting",
+    percent: 0,
+  });
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [zoom, setZoom] = useState(1);
@@ -49,7 +54,7 @@ export function PlannerViewer() {
     async function loadPdf() {
       setLoading(true);
       setError(null);
-      setLoadProgress(null);
+      setLoadProgress({ phase: "starting", percent: 0 });
 
       try {
         const doc = await loadPlannerDocument((progress) => {
@@ -64,14 +69,15 @@ export function PlannerViewer() {
       } catch (loadError) {
         if (!cancelled) {
           console.error(loadError);
+          const message =
+            loadError instanceof Error ? loadError.message : "Unknown error";
           setError(
-            "Could not load the planner PDF. Please refresh the page and try again.",
+            `Could not load the planner PDF (${message}). Please hard-refresh and try again.`,
           );
         }
       } finally {
         if (!cancelled) {
           setLoading(false);
-          setLoadProgress(null);
         }
       }
     }
@@ -160,6 +166,12 @@ export function PlannerViewer() {
     return null;
   }, [loading, loadProgress, error]);
 
+  const showProgressBar =
+    loading &&
+    (loadProgress.phase === "downloading" ||
+      loadProgress.phase === "opening" ||
+      loadProgress.phase === "starting");
+
   return (
     <div className="planner-app flex min-h-screen flex-col">
       <PlannerToolbar
@@ -190,14 +202,17 @@ export function PlannerViewer() {
         {statusMessage && (
           <div className="planner-status mb-4 w-full max-w-md rounded-xl px-4 py-3 text-center text-sm">
             <p>{statusMessage}</p>
-            {loading && loadProgress?.phase === "downloading" && loadProgress.percent > 0 && (
+            {showProgressBar && (
               <div className="bg-muted mt-3 h-2 overflow-hidden rounded-full">
                 <div
                   className="bg-primary h-full rounded-full transition-all duration-300"
-                  style={{ width: `${loadProgress.percent}%` }}
+                  style={{
+                    width: `${Math.max(loadProgress.percent, loadProgress.phase === "starting" ? 5 : 10)}%`,
+                  }}
                 />
               </div>
             )}
+            <p className="text-muted-foreground mt-2 text-xs">Build v2 — large 37MB file</p>
           </div>
         )}
 
