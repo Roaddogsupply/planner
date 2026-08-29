@@ -93,6 +93,18 @@ Railway will start building automatically. Wait 2–5 minutes.
 
 Open that URL in your browser — your planner should load.
 
+### Step 4: Bookmark your personal planner link
+
+Once the site is live:
+
+1. Open your planner website
+2. Click **My link** in the toolbar (copies your personal URL)
+3. **Bookmark that link** in your browser (Safari: Bookmarks → Add Bookmark)
+
+Your notes save to the cloud automatically. If your browser ever clears its data, open that bookmark and everything comes back — no JSON file needed.
+
+> **Important for Railway:** Your notes are stored on the server in a `.data` folder. By default Railway may reset that folder when you redeploy. For long-term cloud saves, add a **Volume** in Railway (Settings → Volumes → mount at `/app/.data`). Ask in Cursor if you want help setting that up.
+
 ---
 
 ## Part 3 — When you make changes later

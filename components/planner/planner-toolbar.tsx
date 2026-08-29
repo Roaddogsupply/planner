@@ -15,6 +15,7 @@ import {
   ImageIcon,
   Trash2,
   Download,
+  Link2,
   RotateCcw,
 } from "lucide-react";
 
@@ -25,6 +26,7 @@ type PlannerToolbarProps = {
   tool: PlannerTool;
   fontSize: number;
   savedLabel: string;
+  restoreLink: string;
   onPageChange: (page: number) => void;
   onZoomChange: (zoom: number) => void;
   onToolChange: (tool: PlannerTool) => void;
@@ -54,6 +56,7 @@ export function PlannerToolbar({
   tool,
   fontSize,
   savedLabel,
+  restoreLink,
   onPageChange,
   onZoomChange,
   onToolChange,
@@ -246,8 +249,26 @@ export function PlannerToolbar({
 
           <Button
             variant="outline"
+            size="sm"
+            title="Copy your personal planner link (bookmark this to get your notes back)"
+            onClick={async () => {
+              if (!restoreLink) return;
+              try {
+                await navigator.clipboard.writeText(restoreLink);
+                window.alert("Link copied! Save it in your bookmarks so your notes always come back.");
+              } catch {
+                window.prompt("Copy this link and bookmark it:", restoreLink);
+              }
+            }}
+          >
+            <Link2 />
+            <span className="hidden sm:inline">My link</span>
+          </Button>
+
+          <Button
+            variant="outline"
             size="icon-sm"
-            title="Download your saved notes as JSON"
+            title="Optional: download a backup file"
             onClick={onExport}
           >
             <Download />

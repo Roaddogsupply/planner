@@ -7,8 +7,9 @@ Turn your interactive digital planner PDF into a fillable website. This app rend
 - **597 pages** — same layout, colors, and binder-style design as the original PDF
 - **Navigate mode** — click tabs, index items, and internal links (just like the PDF)
 - **Write mode** — click any line or box to type; drag text boxes to reposition them
-- **Auto-save** — your notes are saved in your browser automatically
-- **Export** — download your notes as a JSON backup file
+- **Auto-save** — your notes save automatically to the cloud (and in your browser as a backup)
+- **My link** — bookmark your personal link once; if browser data is cleared, open that link and everything comes back
+- **Export** — optional download of your notes as a JSON file
 
 ## Run locally
 

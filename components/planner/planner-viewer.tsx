@@ -23,6 +23,13 @@ import {
 } from "@/lib/calendar-storage";
 import { customTabLabel, isCustomPage } from "@/lib/custom-pages";
 import { compressImageFile, imageAspectHeightPercent } from "@/lib/image-utils";
+import { createCloudSnapshot } from "@/lib/planner-cloud-types";
+import {
+  fetchPlannerFromCloud,
+  savePlannerToCloud,
+  scheduleCloudSave,
+} from "@/lib/planner-cloud-sync";
+import { buildRestoreLink, resolvePlannerId } from "@/lib/planner-sync-id";
 
 function formatLoadingMessage(progress: LoadProgress | null) {
   if (!progress) return "Starting planner…";
@@ -57,7 +64,10 @@ export function PlannerViewer() {
   const [fontSize, setFontSize] = useState(14);
   const [annotations, setAnnotations] = useState<PlannerAnnotation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [savedLabel, setSavedLabel] = useState("Saved locally");
+  const [savedLabel, setSavedLabel] = useState("Loading…");
+  const [restoreLink, setRestoreLink] = useState("");
+  const [plannerId, setPlannerId] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
   const [calendarFeedUrl, setCalendarFeedUrl] = useState<string | null>(null);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [calendarSyncing, setCalendarSyncing] = useState(false);
@@ -70,19 +80,63 @@ export function PlannerViewer() {
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const stored = loadPlannerData();
-    setPage(stored.lastPage);
-    setZoom(stored.zoom || fitZoom());
-    setTool(stored.tool);
-    setAnnotations(stored.annotations);
+    const id = resolvePlannerId();
+    setPlannerId(id);
+    setRestoreLink(buildRestoreLink(id));
 
+    const local = loadPlannerData();
     const feedUrl = loadCalendarFeedUrl();
     const cache = loadCalendarCache();
-    if (feedUrl) setCalendarFeedUrl(feedUrl);
-    if (cache) {
-      setCalendarEvents(cache.events);
-      setCalendarLastSynced(cache.fetchedAt);
-    }
+
+    void (async () => {
+      const cloud = await fetchPlannerFromCloud(id);
+
+      if (cloud) {
+        setPage(cloud.lastPage);
+        setZoom(cloud.zoom || fitZoom());
+        setTool(cloud.tool);
+        setAnnotations(cloud.annotations);
+        savePlannerData({
+          version: 3,
+          annotations: cloud.annotations,
+          lastPage: cloud.lastPage,
+          zoom: cloud.zoom,
+          tool: cloud.tool,
+        });
+
+        if (cloud.calendarFeedUrl) {
+          saveCalendarFeedUrl(cloud.calendarFeedUrl);
+          setCalendarFeedUrl(cloud.calendarFeedUrl);
+        } else if (feedUrl) {
+          setCalendarFeedUrl(feedUrl);
+        }
+      } else {
+        setPage(local.lastPage);
+        setZoom(local.zoom || fitZoom());
+        setTool(local.tool);
+        setAnnotations(local.annotations);
+        if (feedUrl) setCalendarFeedUrl(feedUrl);
+
+        if (local.annotations.length > 0 || local.lastPage > 1) {
+          try {
+            await savePlannerToCloud(
+              id,
+              createCloudSnapshot(local, feedUrl),
+            );
+          } catch {
+            // Offline or local-only — browser copy still works.
+          }
+        }
+      }
+
+      if (cache) {
+        setCalendarEvents(cache.events);
+        setCalendarLastSynced(cache.fetchedAt);
+      }
+
+      setSavedLabel("Saved to cloud");
+      setHydrated(true);
+    })();
   }, []);
 
   const syncCalendar = useCallback(async (feedUrl: string) => {
@@ -148,12 +202,20 @@ export function PlannerViewer() {
   }, []);
 
   useEffect(() => {
-    if (loading) return;
+    if (loading || !hydrated || !plannerId) return;
+
+    const snapshot = createCloudSnapshot(
+      { version: 3, annotations, lastPage: page, zoom, tool },
+      calendarFeedUrl,
+    );
+
     savePlannerData({ version: 3, annotations, lastPage: page, zoom, tool });
-    setSavedLabel("Saved locally");
-    const timer = window.setTimeout(() => setSavedLabel("All changes saved"), 400);
-    return () => window.clearTimeout(timer);
-  }, [annotations, page, zoom, tool, loading]);
+    scheduleCloudSave(plannerId, snapshot, (status) => {
+      if (status === "saving") setSavedLabel("Saving…");
+      if (status === "saved") setSavedLabel("Saved to cloud");
+      if (status === "offline") setSavedLabel("Saved on this device");
+    });
+  }, [annotations, page, zoom, tool, loading, hydrated, plannerId, calendarFeedUrl]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -218,12 +280,17 @@ export function PlannerViewer() {
 
   const handleReset = () => {
     const confirmed = window.confirm(
-      "Clear all typed notes, images, and checkmarks from this browser? This cannot be undone.",
+      "Clear all typed notes, images, and checkmarks everywhere (cloud and this browser)? This cannot be undone.",
     );
-    if (!confirmed) return;
+    if (!confirmed || !plannerId) return;
     setAnnotations([]);
     setSelectedId(null);
+    const cleared = createCloudSnapshot(
+      { version: 3, annotations: [], lastPage: page, zoom, tool },
+      calendarFeedUrl,
+    );
     savePlannerData({ version: 3, annotations: [], lastPage: page, zoom, tool });
+    void savePlannerToCloud(plannerId, cleared);
   };
 
   const selectedImage = annotations.find(
@@ -314,6 +381,7 @@ export function PlannerViewer() {
         tool={tool}
         fontSize={fontSize}
         savedLabel={savedLabel}
+        restoreLink={restoreLink}
         onPageChange={setPage}
         onZoomChange={setZoom}
         onToolChange={(next) => {
@@ -403,6 +471,12 @@ export function PlannerViewer() {
             <p className="text-muted-foreground mt-4 max-w-2xl text-center text-xs sm:text-sm">
               {helpText}
             </p>
+            {restoreLink && (
+              <p className="text-muted-foreground mt-2 max-w-2xl text-center text-xs">
+                Your notes auto-save to the cloud. Bookmark this page once — if your browser
+                ever clears data, open that bookmark and everything comes back.
+              </p>
+            )}
           </>
         )}
       </main>
