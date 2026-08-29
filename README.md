@@ -37,6 +37,10 @@ Open [http://localhost:4317](http://localhost:4317) in your browser.
 | `components/planner/` | PDF viewer, toolbar, and text overlay |
 | `lib/annotations.ts` | Save/load typed notes in the browser |
 
+## Put it online (GitHub + Railway)
+
+See **[DEPLOY.md](./DEPLOY.md)** for a beginner-friendly step-by-step guide to publish your planner as a live website.
+
 ## Tech stack
 
 - Next.js (App Router)
