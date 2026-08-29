@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { PDFDocumentProxy } from "pdfjs-dist";
-import { configurePdfWorker, pdfjs, PDF_URL } from "@/lib/pdf";
+import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { loadPlannerDocument, type LoadProgress } from "@/lib/pdf";
 import {
   loadPlannerData,
   savePlannerData,
@@ -11,9 +11,22 @@ import {
 import { PdfPage } from "@/components/planner/pdf-page";
 import { PlannerToolbar } from "@/components/planner/planner-toolbar";
 
+function formatLoadingMessage(progress: LoadProgress | null) {
+  if (!progress) return "Loading your planner…";
+
+  if (progress.phase === "downloading") {
+    return progress.percent > 0
+      ? `Downloading planner… ${progress.percent}%`
+      : "Downloading planner…";
+  }
+
+  return "Opening planner…";
+}
+
 export function PlannerViewer() {
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadProgress, setLoadProgress] = useState<LoadProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [zoom, setZoom] = useState(1);
@@ -24,7 +37,6 @@ export function PlannerViewer() {
   const [savedLabel, setSavedLabel] = useState("Saved locally");
 
   useEffect(() => {
-    configurePdfWorker();
     const stored = loadPlannerData();
     setPage(stored.lastPage);
     setZoom(stored.zoom);
@@ -37,19 +49,29 @@ export function PlannerViewer() {
     async function loadPdf() {
       setLoading(true);
       setError(null);
+      setLoadProgress(null);
 
       try {
-        const doc = await pdfjs.getDocument({ url: PDF_URL }).promise;
+        const doc = await loadPlannerDocument((progress) => {
+          if (!cancelled) {
+            setLoadProgress(progress);
+          }
+        });
+
         if (!cancelled) {
           setPdf(doc);
         }
-      } catch {
+      } catch (loadError) {
         if (!cancelled) {
-          setError("Could not load the planner PDF. Please refresh and try again.");
+          console.error(loadError);
+          setError(
+            "Could not load the planner PDF. Please refresh the page and try again.",
+          );
         }
       } finally {
         if (!cancelled) {
           setLoading(false);
+          setLoadProgress(null);
         }
       }
     }
@@ -133,10 +155,10 @@ export function PlannerViewer() {
   };
 
   const statusMessage = useMemo(() => {
-    if (loading) return "Loading your planner…";
+    if (loading) return formatLoadingMessage(loadProgress);
     if (error) return error;
     return null;
-  }, [loading, error]);
+  }, [loading, loadProgress, error]);
 
   return (
     <div className="planner-app flex min-h-screen flex-col">
@@ -166,8 +188,16 @@ export function PlannerViewer() {
 
       <main className="planner-stage flex flex-1 flex-col items-center px-4 py-6">
         {statusMessage && (
-          <div className="planner-status mb-4 rounded-xl px-4 py-3 text-sm">
-            {statusMessage}
+          <div className="planner-status mb-4 w-full max-w-md rounded-xl px-4 py-3 text-center text-sm">
+            <p>{statusMessage}</p>
+            {loading && loadProgress?.phase === "downloading" && loadProgress.percent > 0 && (
+              <div className="bg-muted mt-3 h-2 overflow-hidden rounded-full">
+                <div
+                  className="bg-primary h-full rounded-full transition-all duration-300"
+                  style={{ width: `${loadProgress.percent}%` }}
+                />
+              </div>
+            )}
           </div>
         )}
 
