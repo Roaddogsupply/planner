@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { loadPlannerDocument, type LoadProgress } from "@/lib/pdf";
 import {
+  isImageAnnotation,
   loadPlannerData,
   savePlannerData,
+  type ImageAnnotation,
   type PlannerAnnotation,
   type PlannerTool,
 } from "@/lib/annotations";
@@ -19,6 +21,8 @@ import {
   saveCalendarCache,
   saveCalendarFeedUrl,
 } from "@/lib/calendar-storage";
+import { customTabLabel, isCustomPage } from "@/lib/custom-pages";
+import { compressImageFile, imageAspectHeightPercent } from "@/lib/image-utils";
 
 function formatLoadingMessage(progress: LoadProgress | null) {
   if (!progress) return "Starting planner…";
@@ -58,6 +62,12 @@ export function PlannerViewer() {
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [calendarSyncing, setCalendarSyncing] = useState(false);
   const [calendarLastSynced, setCalendarLastSynced] = useState<string | null>(null);
+  const [pendingImage, setPendingImage] = useState<{
+    src: string;
+    width: number;
+    height: number;
+  } | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const stored = loadPlannerData();
@@ -139,7 +149,7 @@ export function PlannerViewer() {
 
   useEffect(() => {
     if (loading) return;
-    savePlannerData({ version: 2, annotations, lastPage: page, zoom, tool });
+    savePlannerData({ version: 3, annotations, lastPage: page, zoom, tool });
     setSavedLabel("Saved locally");
     const timer = window.setTimeout(() => setSavedLabel("All changes saved"), 400);
     return () => window.clearTimeout(timer);
@@ -195,7 +205,7 @@ export function PlannerViewer() {
 
   const handleExport = () => {
     const blob = new Blob(
-      [JSON.stringify({ version: 2, annotations, lastPage: page, zoom, tool }, null, 2)],
+      [JSON.stringify({ version: 3, annotations, lastPage: page, zoom, tool }, null, 2)],
       { type: "application/json" },
     );
     const url = URL.createObjectURL(blob);
@@ -208,13 +218,70 @@ export function PlannerViewer() {
 
   const handleReset = () => {
     const confirmed = window.confirm(
-      "Clear all typed notes and checkmarks from this browser? This cannot be undone.",
+      "Clear all typed notes, images, and checkmarks from this browser? This cannot be undone.",
     );
     if (!confirmed) return;
     setAnnotations([]);
     setSelectedId(null);
-    savePlannerData({ version: 2, annotations: [], lastPage: page, zoom, tool });
+    savePlannerData({ version: 3, annotations: [], lastPage: page, zoom, tool });
   };
+
+  const selectedImage = annotations.find(
+    (item): item is ImageAnnotation => item.id === selectedId && isImageAnnotation(item),
+  );
+
+  const handlePickImage = () => {
+    imageInputRef.current?.click();
+  };
+
+  const handleImageFile = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      const src = await compressImageFile(file);
+      const aspect = await new Promise<number>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img.naturalWidth / img.naturalHeight);
+        img.onerror = reject;
+        img.src = src;
+      });
+      const width = 30;
+      const height = imageAspectHeightPercent(width, aspect);
+      setPendingImage({ src, width, height });
+      setTool("image");
+    } catch (pickError) {
+      window.alert(pickError instanceof Error ? pickError.message : "Could not add image.");
+    }
+  };
+
+  const handleImageWidthChange = (width: number) => {
+    if (!selectedImage) return;
+    const ratio = selectedImage.width / selectedImage.height;
+    const height = width / ratio;
+    handleUpdateAnnotation(selectedImage.id, { width, height });
+  };
+
+  const helpText = useMemo(() => {
+    if (isCustomPage(page)) {
+      if (tool === "image") {
+        return pendingImage
+          ? "Custom page: click where you want the image. Use Type for text anytime."
+          : "Custom page: pick Image, choose a photo, then click the page to place it.";
+      }
+      return "Custom page — fully yours. Click anywhere to type. Use Image to add photos.";
+    }
+    if (calendarFeedUrl) {
+      return "Events show on monthly calendar pages — click a month tab (JAN, FEB, etc.) on the left edge.";
+    }
+    if (tool === "image") {
+      return pendingImage
+        ? "Click the page to place your image."
+        : "Choose Image, pick a photo, then click the page.";
+    }
+    if (tool === "text") {
+      return "Click tabs and index links to navigate. Click any line or box to type on it.";
+    }
+    return "Check mode: click on » marks or checklist rows to add a checkmark. Tabs still work.";
+  }, [page, tool, pendingImage, calendarFeedUrl]);
 
   const statusMessage = useMemo(() => {
     if (loading) return formatLoadingMessage(loadProgress);
@@ -230,6 +297,16 @@ export function PlannerViewer() {
 
   return (
     <div className="planner-app flex min-h-screen flex-col">
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(event) => {
+          void handleImageFile(event.target.files?.[0]);
+          event.target.value = "";
+        }}
+      />
       <PlannerToolbar
         page={page}
         totalPages={totalPages}
@@ -242,6 +319,7 @@ export function PlannerViewer() {
         onToolChange={(next) => {
           setTool(next);
           setSelectedId(null);
+          if (next !== "image") setPendingImage(null);
         }}
         onFontSizeChange={setFontSize}
         onDeleteSelected={() => {
@@ -273,6 +351,11 @@ export function PlannerViewer() {
           if (!calendarFeedUrl) return;
           await syncCalendar(calendarFeedUrl);
         }}
+        isCustomPage={isCustomPage(page)}
+        pendingImage={Boolean(pendingImage)}
+        onPickImage={handlePickImage}
+        selectedImageWidth={selectedImage ? selectedImage.width : null}
+        onImageWidthChange={handleImageWidthChange}
       />
 
       <main className="planner-stage flex flex-1 flex-col items-center px-4 py-6">
@@ -294,6 +377,11 @@ export function PlannerViewer() {
 
         {pdf && !error && (
           <>
+            {customTabLabel(page) && (
+              <p className="text-primary mb-3 text-center text-sm font-medium">
+                {customTabLabel(page)} — add text and images anywhere on this page
+              </p>
+            )}
             <PdfPage
               pdf={pdf}
               pageNumber={page}
@@ -308,14 +396,12 @@ export function PlannerViewer() {
               onSelectAnnotation={setSelectedId}
               onToggleCheckbox={handleToggleCheckbox}
               calendarEvents={calendarEvents}
+              pendingImage={pendingImage}
+              onPendingImagePlaced={() => setPendingImage(null)}
             />
 
             <p className="text-muted-foreground mt-4 max-w-2xl text-center text-xs sm:text-sm">
-              {calendarFeedUrl
-                ? "Events show on monthly calendar pages — click a month tab (JAN, FEB, etc.) on the left edge."
-                : tool === "text"
-                  ? "Click tabs and index links to navigate. Click any line or box to type on it."
-                  : "Check mode: click on » marks or checklist rows to add a checkmark. Tabs still work."}
+              {helpText}
             </p>
           </>
         )}

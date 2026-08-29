@@ -7,11 +7,13 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
-import type { CheckboxAnnotation, PlannerAnnotation, PlannerTool, TextAnnotation } from "@/lib/annotations";
+import type { CheckboxAnnotation, ImageAnnotation, PlannerAnnotation, PlannerTool, TextAnnotation } from "@/lib/annotations";
 import {
   createCheckboxAnnotation,
+  createImageAnnotation,
   createTextAnnotation,
   isCheckboxAnnotation,
+  isImageAnnotation,
   isTextAnnotation,
 } from "@/lib/annotations";
 import { cn } from "@/lib/utils";
@@ -34,6 +36,8 @@ type PdfPageProps = {
   onSelectAnnotation: (id: string | null) => void;
   onToggleCheckbox: (id: string) => void;
   calendarEvents: CalendarEvent[];
+  pendingImage: { src: string; width: number; height: number } | null;
+  onPendingImagePlaced: () => void;
 };
 
 type LinkOverlay = {
@@ -77,6 +81,20 @@ function hitTestLink(x: number, y: number, links: LinkOverlay[]) {
   return null;
 }
 
+function hitTestImage(x: number, y: number, items: ImageAnnotation[]) {
+  for (const item of [...items].reverse()) {
+    if (
+      x >= item.x &&
+      x <= item.x + item.width &&
+      y >= item.y &&
+      y <= item.y + item.height
+    ) {
+      return item;
+    }
+  }
+  return null;
+}
+
 function hitTestCheckbox(x: number, y: number, items: CheckboxAnnotation[]) {
   for (const item of items) {
     const half = item.size / 2;
@@ -101,6 +119,8 @@ export function PdfPage({
   onSelectAnnotation,
   onToggleCheckbox,
   calendarEvents,
+  pendingImage,
+  onPendingImagePlaced,
 }: PdfPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -241,11 +261,20 @@ export function PdfPage({
       (item): item is CheckboxAnnotation =>
         isCheckboxAnnotation(item) && item.page === pageNumber,
     );
-
+    const pageImages = annotations.filter(
+      (item): item is ImageAnnotation =>
+        isImageAnnotation(item) && item.page === pageNumber,
+    );
     const pageTexts = annotations.filter(
       (item): item is TextAnnotation =>
         isTextAnnotation(item) && item.page === pageNumber,
     );
+
+    const hitImage = hitTestImage(point.x, point.y, pageImages);
+    if (hitImage) {
+      onSelectAnnotation(hitImage.id);
+      return;
+    }
 
     for (const text of pageTexts) {
       if (
@@ -271,12 +300,32 @@ export function PdfPage({
       return;
     }
 
+    if (tool === "image" && pendingImage) {
+      const image = createImageAnnotation(
+        pageNumber,
+        point.x,
+        point.y,
+        pendingImage.src,
+        pendingImage.width,
+        pendingImage.height,
+      );
+      onAddAnnotation(image);
+      onSelectAnnotation(image.id);
+      onPendingImagePlaced();
+      return;
+    }
+
+    if (tool === "image") return;
+
     const text = createTextAnnotation(pageNumber, point.x, point.y - 1.2, fontSize);
     onAddAnnotation(text);
     onSelectAnnotation(text.id);
   };
 
-  const handleTextMouseDown = (event: ReactMouseEvent, annotation: TextAnnotation) => {
+  const handleDragMouseDown = (
+    event: ReactMouseEvent,
+    annotation: TextAnnotation | ImageAnnotation,
+  ) => {
     event.stopPropagation();
     if (!containerRef.current) return;
 
@@ -287,6 +336,10 @@ export function PdfPage({
       offsetY: point.y - annotation.y,
     };
     onSelectAnnotation(annotation.id);
+  };
+
+  const handleTextMouseDown = (event: ReactMouseEvent, annotation: TextAnnotation) => {
+    handleDragMouseDown(event, annotation);
   };
 
   useEffect(() => {
@@ -316,6 +369,8 @@ export function PdfPage({
   }, [onUpdateAnnotation]);
 
   const pageAnnotations = annotations.filter((item) => item.page === pageNumber);
+  const pageImages = pageAnnotations.filter(isImageAnnotation);
+  const pageOthers = pageAnnotations.filter((item) => !isImageAnnotation(item));
 
   return (
     <div className="relative mx-auto w-full" style={{ maxWidth: pageSize.width }}>
@@ -323,7 +378,7 @@ export function PdfPage({
         ref={containerRef}
         className={cn(
           "planner-page relative w-full select-none",
-          tool === "text" ? "cursor-text" : "cursor-crosshair",
+          tool === "text" ? "cursor-text" : tool === "image" ? "cursor-copy" : "cursor-crosshair",
           loading && "opacity-70",
         )}
         style={{ aspectRatio: `${pageSize.width} / ${pageSize.height}` }}
@@ -333,7 +388,36 @@ export function PdfPage({
 
         <CalendarOverlay cells={calendarCells} events={calendarEvents} />
 
-        {pageAnnotations.map((annotation) => {
+        {pageImages.map((annotation) => {
+          const isSelected = selectedId === annotation.id;
+          return (
+            <div
+              key={annotation.id}
+              className={cn(
+                "absolute z-10 overflow-hidden rounded-sm",
+                isSelected && "ring-2 ring-primary ring-offset-1",
+              )}
+              style={{
+                left: `${annotation.x}%`,
+                top: `${annotation.y}%`,
+                width: `${annotation.width}%`,
+                height: `${annotation.height}%`,
+              }}
+              onMouseDown={(event) => handleDragMouseDown(event, annotation)}
+              onClick={(event) => event.stopPropagation()}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={annotation.src}
+                alt="Custom planner image"
+                className="pointer-events-none h-full w-full object-contain"
+                draggable={false}
+              />
+            </div>
+          );
+        })}
+
+        {pageOthers.map((annotation) => {
           if (isCheckboxAnnotation(annotation)) {
             return (
               <button
@@ -360,12 +444,14 @@ export function PdfPage({
             );
           }
 
+          if (!isTextAnnotation(annotation)) return null;
+
           const isSelected = selectedId === annotation.id;
           return (
             <div
               key={annotation.id}
               className={cn(
-                "absolute min-h-[1.1rem] rounded-sm border border-transparent px-0.5",
+                "absolute z-20 min-h-[1.1rem] rounded-sm border border-transparent px-0.5",
                 isSelected && "border-primary/60 bg-primary/5",
               )}
               style={{

@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Pencil,
   CheckSquare,
+  ImageIcon,
   Trash2,
   Download,
   RotateCcw,
@@ -39,6 +40,11 @@ type PlannerToolbarProps = {
   onCalendarSave: (url: string) => Promise<void>;
   onCalendarDisconnect: () => void;
   onCalendarRefresh: () => Promise<void>;
+  isCustomPage: boolean;
+  pendingImage: boolean;
+  onPickImage: () => void;
+  selectedImageWidth: number | null;
+  onImageWidthChange: (width: number) => void;
 };
 
 export function PlannerToolbar({
@@ -63,6 +69,11 @@ export function PlannerToolbar({
   onCalendarSave,
   onCalendarDisconnect,
   onCalendarRefresh,
+  isCustomPage,
+  pendingImage,
+  onPickImage,
+  selectedImageWidth,
+  onImageWidthChange,
 }: PlannerToolbarProps) {
   return (
     <header className="planner-toolbar sticky top-0 z-50 border-b backdrop-blur-md">
@@ -161,6 +172,31 @@ export function PlannerToolbar({
             Check
           </Button>
 
+          <Button
+            variant={tool === "image" ? "default" : "outline"}
+            size="sm"
+            title={pendingImage ? "Click the page to place your image" : "Add an image"}
+            onClick={() => {
+              onToolChange("image");
+              if (!pendingImage) onPickImage();
+            }}
+          >
+            <ImageIcon />
+            Image
+          </Button>
+
+          {pendingImage && (
+            <Badge variant="secondary" className="text-xs">
+              Click page to place
+            </Badge>
+          )}
+
+          {isCustomPage && (
+            <Badge variant="outline" className="hidden text-xs sm:inline-flex">
+              Custom page
+            </Badge>
+          )}
+
           <CalendarSettings
             feedUrl={calendarFeedUrl}
             eventCount={calendarEventCount}
@@ -181,6 +217,21 @@ export function PlannerToolbar({
               className="h-8 w-16"
               aria-label="Font size"
             />
+          )}
+
+          {selectedImageWidth !== null && (
+            <div className="flex items-center gap-1">
+              <span className="text-muted-foreground text-xs">Size</span>
+              <Input
+                type="number"
+                min={8}
+                max={80}
+                value={Math.round(selectedImageWidth)}
+                onChange={(event) => onImageWidthChange(Number(event.target.value) || 28)}
+                className="h-8 w-16"
+                aria-label="Image width"
+              />
+            </div>
           )}
 
           <Button
