@@ -19,6 +19,7 @@ type CalendarSettingsProps = {
   feedUrl: string | null;
   eventCount: number;
   syncing: boolean;
+  syncError: string | null;
   lastSynced: string | null;
   onSave: (url: string) => Promise<void>;
   onDisconnect: () => void;
@@ -29,6 +30,7 @@ export function CalendarSettings({
   feedUrl,
   eventCount,
   syncing,
+  syncError,
   lastSynced,
   onSave,
   onDisconnect,
@@ -79,8 +81,8 @@ export function CalendarSettings({
         <DialogHeader>
           <DialogTitle>Connect Apple Calendar</DialogTitle>
           <DialogDescription>
-            Paste your private iCal link. Events from Apple Calendar will appear on planner
-            calendar pages. This stays in your browser only.
+            Paste your private iCal link. Events from Apple Calendar will appear on monthly
+            calendar pages (click JAN, FEB, etc. on the left tabs).
           </DialogDescription>
         </DialogHeader>
 
@@ -113,6 +115,13 @@ export function CalendarSettings({
             <p className="text-muted-foreground text-xs">
               Connected · {eventCount} events loaded
               {lastSynced ? ` · last synced ${new Date(lastSynced).toLocaleString()}` : ""}
+            </p>
+          )}
+
+          {syncError && (
+            <p className="text-destructive text-sm">
+              Sync issue: {syncError}. Your last loaded events are still shown if available —
+              try Refresh, or paste the calendar link again.
             </p>
           )}
 

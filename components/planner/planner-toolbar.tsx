@@ -41,6 +41,7 @@ type PlannerToolbarProps = {
   calendarFeedUrl: string | null;
   calendarEventCount: number;
   calendarSyncing: boolean;
+  calendarSyncError: string | null;
   calendarLastSynced: string | null;
   onCalendarSave: (url: string) => Promise<void>;
   onCalendarDisconnect: () => void;
@@ -72,6 +73,7 @@ export function PlannerToolbar({
   calendarFeedUrl,
   calendarEventCount,
   calendarSyncing,
+  calendarSyncError,
   calendarLastSynced,
   onCalendarSave,
   onCalendarDisconnect,
@@ -208,6 +210,7 @@ export function PlannerToolbar({
             feedUrl={calendarFeedUrl}
             eventCount={calendarEventCount}
             syncing={calendarSyncing}
+            syncError={calendarSyncError}
             lastSynced={calendarLastSynced}
             onSave={onCalendarSave}
             onDisconnect={onCalendarDisconnect}

@@ -25,6 +25,23 @@ function isAllowedFeedUrl(url: string) {
   }
 }
 
+async function fetchCalendarText(feedUrl: string) {
+  const response = await fetch(feedUrl, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (compatible; RoadDogPlanner/1.0)",
+      Accept: "text/calendar, text/plain, */*",
+    },
+    cache: "no-store",
+    signal: AbortSignal.timeout(20_000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Calendar feed returned ${response.status}`);
+  }
+
+  return response.text();
+}
+
 function formatUtcDate(value: Date) {
   const y = value.getUTCFullYear();
   const m = String(value.getUTCMonth() + 1).padStart(2, "0");
@@ -89,7 +106,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const parsed = await ical.async.fromURL(feedUrl);
+    const parsed = await ical.async.parseICS(await fetchCalendarText(feedUrl));
     const events: CalendarEvent[] = [];
 
     for (const item of Object.values(parsed)) {

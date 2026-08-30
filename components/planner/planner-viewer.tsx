@@ -76,6 +76,7 @@ export function PlannerViewer() {
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [calendarSyncing, setCalendarSyncing] = useState(false);
   const [calendarLastSynced, setCalendarLastSynced] = useState<string | null>(null);
+  const [calendarSyncError, setCalendarSyncError] = useState<string | null>(null);
   const [pendingImage, setPendingImage] = useState<{
     src: string;
     width: number;
@@ -96,6 +97,7 @@ export function PlannerViewer() {
 
     void (async () => {
       const cloud = await fetchPlannerFromCloud(id);
+      const resolvedFeedUrl = cloud?.calendarFeedUrl || feedUrl || null;
 
       if (cloud) {
         setPage(cloud.lastPage);
@@ -111,26 +113,18 @@ export function PlannerViewer() {
           tool: cloud.tool,
           textStyle: normalizeTextStyle(cloud.textStyle),
         });
-
-        if (cloud.calendarFeedUrl) {
-          saveCalendarFeedUrl(cloud.calendarFeedUrl);
-          setCalendarFeedUrl(cloud.calendarFeedUrl);
-        } else if (feedUrl) {
-          setCalendarFeedUrl(feedUrl);
-        }
       } else {
         setPage(local.lastPage);
         setZoom(local.zoom || fitZoom());
         setTool(local.tool);
         setAnnotations(local.annotations);
         setTextStyle(normalizeTextStyle(local.textStyle));
-        if (feedUrl) setCalendarFeedUrl(feedUrl);
 
         if (local.annotations.length > 0 || local.lastPage > 1) {
           try {
             await savePlannerToCloud(
               id,
-              createCloudSnapshot(local, feedUrl),
+              createCloudSnapshot(local, feedUrl, cache),
             );
           } catch {
             // Offline or local-only — browser copy still works.
@@ -138,7 +132,17 @@ export function PlannerViewer() {
         }
       }
 
-      if (cache) {
+      if (resolvedFeedUrl) {
+        saveCalendarFeedUrl(resolvedFeedUrl);
+        setCalendarFeedUrl(resolvedFeedUrl);
+      }
+
+      const cloudCache = cloud?.calendarCache;
+      if (cloudCache?.events?.length) {
+        saveCalendarCache(cloudCache);
+        setCalendarEvents(cloudCache.events);
+        setCalendarLastSynced(cloudCache.fetchedAt);
+      } else if (cache?.events?.length) {
         setCalendarEvents(cache.events);
         setCalendarLastSynced(cache.fetchedAt);
       }
@@ -148,34 +152,64 @@ export function PlannerViewer() {
     })();
   }, []);
 
-  const syncCalendar = useCallback(async (feedUrl: string) => {
-    setCalendarSyncing(true);
-    try {
-      const response = await fetch("/api/calendar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ feedUrl }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error ?? "Calendar sync failed");
+  const syncCalendar = useCallback(
+    async (feedUrl: string) => {
+      setCalendarSyncing(true);
+      setCalendarSyncError(null);
+      try {
+        const response = await fetch("/api/calendar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ feedUrl }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error ?? "Calendar sync failed");
+        }
+        const cache = { events: data.events as CalendarEvent[], fetchedAt: data.fetchedAt as string };
+        setCalendarEvents(cache.events);
+        setCalendarLastSynced(cache.fetchedAt);
+        saveCalendarCache(cache);
+
+        if (plannerId) {
+          void savePlannerToCloud(
+            plannerId,
+            createCloudSnapshot(
+              {
+                version: 3,
+                annotations,
+                lastPage: page,
+                zoom,
+                tool,
+                textStyle,
+              },
+              feedUrl,
+              cache,
+            ),
+          );
+        }
+      } catch (syncError) {
+        const message =
+          syncError instanceof Error ? syncError.message : "Calendar sync failed";
+        setCalendarSyncError(message);
+        throw syncError;
+      } finally {
+        setCalendarSyncing(false);
       }
-      setCalendarEvents(data.events);
-      setCalendarLastSynced(data.fetchedAt);
-      saveCalendarCache({ events: data.events, fetchedAt: data.fetchedAt });
-    } finally {
-      setCalendarSyncing(false);
-    }
-  }, []);
+    },
+    [plannerId, annotations, page, zoom, tool, textStyle],
+  );
 
   useEffect(() => {
-    if (!calendarFeedUrl || loading) return;
-    void syncCalendar(calendarFeedUrl);
+    if (!calendarFeedUrl || loading || !hydrated) return;
+    void syncCalendar(calendarFeedUrl).catch(() => {
+      // Error message is stored in calendarSyncError for the settings dialog.
+    });
     const interval = window.setInterval(() => {
-      void syncCalendar(calendarFeedUrl);
+      void syncCalendar(calendarFeedUrl).catch(() => undefined);
     }, 15 * 60 * 1000);
     return () => window.clearInterval(interval);
-  }, [calendarFeedUrl, loading, syncCalendar]);
+  }, [calendarFeedUrl, loading, hydrated, syncCalendar]);
 
   useEffect(() => {
     let cancelled = false;
@@ -213,9 +247,15 @@ export function PlannerViewer() {
   useEffect(() => {
     if (loading || !hydrated || !plannerId) return;
 
+    const calendarCache =
+      calendarEvents.length > 0 && calendarLastSynced
+        ? { events: calendarEvents, fetchedAt: calendarLastSynced }
+        : null;
+
     const snapshot = createCloudSnapshot(
       { version: 3, annotations, lastPage: page, zoom, tool, textStyle },
       calendarFeedUrl,
+      calendarCache,
     );
 
     savePlannerData({ version: 3, annotations, lastPage: page, zoom, tool, textStyle });
@@ -224,7 +264,19 @@ export function PlannerViewer() {
       if (status === "saved") setSavedLabel("Saved to cloud");
       if (status === "offline") setSavedLabel("Saved on this device");
     });
-  }, [annotations, page, zoom, tool, textStyle, loading, hydrated, plannerId, calendarFeedUrl]);
+  }, [
+    annotations,
+    page,
+    zoom,
+    tool,
+    textStyle,
+    loading,
+    hydrated,
+    plannerId,
+    calendarFeedUrl,
+    calendarEvents,
+    calendarLastSynced,
+  ]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -330,6 +382,9 @@ export function PlannerViewer() {
     const cleared = createCloudSnapshot(
       { version: 3, annotations: [], lastPage: page, zoom, tool, textStyle },
       calendarFeedUrl,
+      calendarEvents.length > 0 && calendarLastSynced
+        ? { events: calendarEvents, fetchedAt: calendarLastSynced }
+        : null,
     );
     savePlannerData({ version: 3, annotations: [], lastPage: page, zoom, tool, textStyle });
     void savePlannerToCloud(plannerId, cleared);
@@ -421,8 +476,8 @@ export function PlannerViewer() {
         calendarEventCount={calendarEvents.length}
         calendarSyncing={calendarSyncing}
         calendarLastSynced={calendarLastSynced}
+        calendarSyncError={calendarSyncError}
         onCalendarSave={async (url) => {
-          clearCalendarCache();
           saveCalendarFeedUrl(url);
           setCalendarFeedUrl(url);
           await syncCalendar(url);
@@ -433,6 +488,7 @@ export function PlannerViewer() {
           setCalendarFeedUrl(null);
           setCalendarEvents([]);
           setCalendarLastSynced(null);
+          setCalendarSyncError(null);
         }}
         onCalendarRefresh={async () => {
           if (!calendarFeedUrl) return;
