@@ -1,5 +1,5 @@
 import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
-import { enqueuePdfTask } from "@/lib/pdf-task-queue";
+import { enqueuePdfBackgroundTask, withTimeout } from "@/lib/pdf-task-queue";
 
 /** Whole-year overview spreads — event titles are too cramped here. */
 export const YEAR_OVERVIEW_PAGES = [121, 122] as const;
@@ -312,7 +312,9 @@ export async function buildCalendarPageIndex(pdf: PDFDocumentProxy): Promise<Cal
     if (isCompactCalendarPage(pageNumber)) continue;
 
     const page = await pdf.getPage(pageNumber);
-    const annotations = await enqueuePdfTask(() => page.getAnnotations());
+    const annotations = await enqueuePdfBackgroundTask(() =>
+      withTimeout(page.getAnnotations(), 30_000, []),
+    );
     const fromDateCount = countFromDateLinks(annotations);
 
     if (fromDateCount >= 35 && fromDateCount <= 55) {

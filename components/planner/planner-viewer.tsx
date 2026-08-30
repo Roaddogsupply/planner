@@ -283,13 +283,20 @@ export function PlannerViewer() {
 
     let cancelled = false;
 
-    // Let the visible page load its clickable links before scanning all 597 pages.
+    // Background calendar scan — wait until the visible page has had time to load links.
     const timer = window.setTimeout(() => {
-      void buildCalendarPageIndex(pdf).then((index) => {
+      const idle =
+        typeof window.requestIdleCallback === "function"
+          ? new Promise<void>((resolve) => window.requestIdleCallback(() => resolve()))
+          : Promise.resolve();
+      void idle.then(() => {
         if (cancelled) return;
-        setCalendarPageIndex(index);
+        void buildCalendarPageIndex(pdf).then((index) => {
+          if (cancelled) return;
+          setCalendarPageIndex(index);
+        });
       });
-    }, 12_000);
+    }, 45_000);
 
     return () => {
       cancelled = true;

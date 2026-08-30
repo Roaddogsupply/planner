@@ -166,6 +166,13 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+.planner-link-hit {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  min-width: 28px;
+  min-height: 28px;
+}
+
 .planner-status {
   background: var(--planner-status-bg);
   color: var(--planner-status-text);

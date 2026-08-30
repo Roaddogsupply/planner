@@ -41,7 +41,7 @@ import {
 import { SectionIndexOverlay } from "@/components/planner/section-index-overlay";
 import { getSectionIndex, isSectionIndexOverlayLink, type SectionIndexEntry } from "@/lib/section-indexes";
 import { DEFAULT_INSTANCE_ID } from "@/lib/section-instances";
-import { enqueuePdfTask } from "@/lib/pdf-task-queue";
+import { isTouchDevice, loadPdfAnnotations } from "@/lib/pdf-task-queue";
 
 type PdfPageProps = {
   pdf: PDFDocumentProxy;
@@ -83,13 +83,14 @@ function getAnnotationLinkUrl(annotation: { url?: string; unsafeUrl?: string }) 
   return annotation.url || annotation.unsafeUrl || null;
 }
 
-function expandLink(link: LinkOverlay, padding = 0.4): LinkOverlay {
+function expandLink(link: LinkOverlay, padding?: number): LinkOverlay {
+  const pad = padding ?? (typeof window !== "undefined" && isTouchDevice() ? 1.2 : 0.5);
   return {
     ...link,
-    x: Math.max(0, link.x - padding),
-    y: Math.max(0, link.y - padding),
-    width: link.width + padding * 2,
-    height: link.height + padding * 2,
+    x: Math.max(0, link.x - pad),
+    y: Math.max(0, link.y - pad),
+    width: link.width + pad * 2,
+    height: link.height + pad * 2,
   };
 }
 
@@ -105,36 +106,6 @@ function hitTestLink(x: number, y: number, links: LinkOverlay[]) {
     }
   }
   return null;
-}
-
-async function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((resolve) => {
-      window.setTimeout(() => resolve(fallback), ms);
-    }),
-  ]);
-}
-
-async function loadPageAnnotations(page: {
-  getAnnotations: () => Promise<
-    Array<{
-      subtype?: string;
-      rect?: number[];
-      dest?: unknown;
-      url?: string;
-      unsafeUrl?: string;
-    }>
-  >;
-}) {
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const result = await enqueuePdfTask(() =>
-      withTimeout(page.getAnnotations(), 45_000, []),
-    );
-    if (result.length > 0 || attempt === 3) return result;
-    await new Promise((resolve) => window.setTimeout(resolve, 1500 * (attempt + 1)));
-  }
-  return [];
 }
 
 function hitTestImage(x: number, y: number, items: ImageAnnotation[]) {
@@ -194,9 +165,11 @@ export function PdfPage({
   );
   const [loading, setLoading] = useState(true);
   const [linksLoading, setLinksLoading] = useState(false);
+  const [linksRetryKey, setLinksRetryKey] = useState(0);
   const drawGenerationRef = useRef(0);
   const calendarPageIndexRef = useRef(calendarPageIndex);
   calendarPageIndexRef.current = calendarPageIndex;
+  const lastLinkNavAtRef = useRef(0);
   const dragState = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null);
   const resizeState = useRef<{
     id: string;
@@ -251,7 +224,13 @@ export function PdfPage({
         const isDailySpread =
           pageText.includes("Breakfast") && pageText.includes("Snacks");
 
-        const rawAnnotations = await loadPageAnnotations(page);
+        const rawAnnotations = (await loadPdfAnnotations(() => page.getAnnotations())) as Array<{
+          subtype?: string;
+          rect?: number[];
+          dest?: unknown;
+          url?: string;
+          unsafeUrl?: string;
+        }>;
         if (cancelled || generation !== drawGenerationRef.current) return;
 
         for (const annotation of rawAnnotations) {
@@ -344,7 +323,7 @@ export function PdfPage({
       cancelled = true;
       renderTask?.cancel();
     };
-  }, [pdf, pageNumber, scale]);
+  }, [pdf, pageNumber, scale, linksRetryKey]);
 
   // Week/daily calendar layout depends on the async page index — refresh once it is ready.
   useEffect(() => {
@@ -471,21 +450,25 @@ export function PdfPage({
     }
   };
 
+  const navigateLink = (link: LinkOverlay) => {
+    const now = Date.now();
+    if (now - lastLinkNavAtRef.current < 400) return;
+    lastLinkNavAtRef.current = now;
+    handleLinkClick(link);
+  };
+
   const handleBrowsePointer = (clientX: number, clientY: number) => {
     if (tool !== "navigate" || !containerRef.current || links.length === 0) return false;
     const point = getPointerPercentFromClient(clientX, clientY);
     const link = hitTestLink(point.x, point.y, links);
     if (!link) return false;
-    handleLinkClick(link);
+    navigateLink(link);
     return true;
   };
 
-  const handleBrowseClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
+  const handleBrowsePointerUp = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (tool !== "navigate" || links.length === 0) return;
-    if (handleBrowsePointer(event.clientX, event.clientY)) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
+    handleBrowsePointer(event.clientX, event.clientY);
   };
 
   const handlePageClick = (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -686,8 +669,22 @@ export function PdfPage({
     <div className="relative mx-auto w-full" style={{ maxWidth: pageSize.width }}>
       {browseMode && linksLoading && !loading && (
         <p className="text-muted-foreground mb-2 text-center text-xs">
-          Loading clickable links…
+          Preparing clickable links…
         </p>
+      )}
+      {browseMode && !loading && !linksLoading && links.length === 0 && (
+        <div className="mb-2 text-center">
+          <p className="text-muted-foreground text-xs">
+            Links are not ready yet on this page.
+          </p>
+          <button
+            type="button"
+            className="text-primary mt-1 text-xs underline"
+            onClick={() => setLinksRetryKey((key) => key + 1)}
+          >
+            Tap to retry
+          </button>
+        </div>
       )}
       <div
         ref={containerRef}
@@ -703,10 +700,38 @@ export function PdfPage({
           loading && "opacity-70",
         )}
         style={{ aspectRatio: `${pageSize.width} / ${pageSize.height}`, touchAction: "manipulation" }}
-        onClickCapture={handleBrowseClickCapture}
+        onPointerUp={handleBrowsePointerUp}
         onClick={handlePageClick}
       >
         <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full" />
+
+        {browseMode &&
+          !loading &&
+          links.map((link, index) => (
+            <button
+              key={`pdf-link-${linksRetryKey}-${index}-${link.page ?? link.uri ?? "dest"}`}
+              type="button"
+              tabIndex={-1}
+              aria-label="Navigate"
+              className="planner-link-hit absolute z-[8] m-0 cursor-pointer border-0 bg-transparent p-0"
+              style={{
+                left: `${link.x}%`,
+                top: `${link.y}%`,
+                width: `${link.width}%`,
+                height: `${link.height}%`,
+              }}
+              onPointerUp={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                navigateLink(link);
+              }}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                navigateLink(link);
+              }}
+            />
+          ))}
 
         {weekFocusY != null && (
           <div
