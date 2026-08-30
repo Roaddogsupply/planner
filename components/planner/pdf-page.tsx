@@ -26,7 +26,8 @@ import type { CalendarDayCell, CalendarEvent } from "@/lib/calendar-types";
 import { imageHeightForWidth, imageWidthForHeight } from "@/lib/image-utils";
 import { CalendarOverlay } from "@/components/planner/calendar-overlay";
 import { SectionIndexOverlay } from "@/components/planner/section-index-overlay";
-import { getSectionIndex, isSectionIndexOverlayLink } from "@/lib/section-indexes";
+import { getSectionIndex, isSectionIndexOverlayLink, type SectionIndexEntry } from "@/lib/section-indexes";
+import { DEFAULT_INSTANCE_ID } from "@/lib/section-instances";
 
 type PdfPageProps = {
   pdf: PDFDocumentProxy;
@@ -36,7 +37,10 @@ type PdfPageProps = {
   annotations: PlannerAnnotation[];
   selectedId: string | null;
   textStyle: TextStyle;
-  onPageNavigate: (page: number) => void;
+  activeInstanceId: string;
+  sectionInstanceCounts: Record<number, number>;
+  onPageNavigate: (page: number, instanceId?: string) => void;
+  onAddSectionCopy: (section: SectionIndexEntry) => void;
   onAddAnnotation: (annotation: PlannerAnnotation) => void;
   onUpdateAnnotation: (id: string, patch: Record<string, unknown>) => void;
   onSelectAnnotation: (id: string | null) => void;
@@ -120,6 +124,7 @@ export function PdfPage({
   selectedId,
   textStyle,
   onPageNavigate,
+  onAddSectionCopy,
   onAddAnnotation,
   onUpdateAnnotation,
   onSelectAnnotation,
@@ -127,6 +132,8 @@ export function PdfPage({
   calendarEvents,
   pendingImage,
   onPendingImagePlaced,
+  activeInstanceId,
+  sectionInstanceCounts,
 }: PdfPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -303,13 +310,16 @@ export function PdfPage({
       }
     }
 
+    const instanceId =
+      activeInstanceId === DEFAULT_INSTANCE_ID ? undefined : activeInstanceId;
+
     if (tool === "checkbox") {
       const existing = hitTestCheckbox(point.x, point.y, pageCheckboxes);
       if (existing) {
         onToggleCheckbox(existing.id);
         return;
       }
-      const checkbox = createCheckboxAnnotation(pageNumber, point.x, point.y);
+      const checkbox = createCheckboxAnnotation(pageNumber, point.x, point.y, instanceId);
       onAddAnnotation(checkbox);
       onSelectAnnotation(checkbox.id);
       return;
@@ -324,6 +334,7 @@ export function PdfPage({
         pendingImage.width,
         pendingImage.height,
         pendingImage.aspectRatio,
+        instanceId,
       );
       onAddAnnotation(image);
       onSelectAnnotation(image.id);
@@ -333,7 +344,13 @@ export function PdfPage({
 
     if (tool === "image") return;
 
-    const text = createTextAnnotation(pageNumber, point.x, point.y - 1.2, textStyle);
+    const text = createTextAnnotation(
+      pageNumber,
+      point.x,
+      point.y - 1.2,
+      textStyle,
+      instanceId,
+    );
     onAddAnnotation(text);
     onSelectAnnotation(text.id);
   };
@@ -459,7 +476,12 @@ export function PdfPage({
         <CalendarOverlay cells={calendarCells} events={calendarEvents} />
 
         {sectionIndex && (
-          <SectionIndexOverlay config={sectionIndex} onNavigate={onPageNavigate} />
+          <SectionIndexOverlay
+            config={sectionIndex}
+            instanceCounts={sectionInstanceCounts}
+            onNavigate={onPageNavigate}
+            onAddCopy={onAddSectionCopy}
+          />
         )}
 
         {pageImages.map((annotation) => {

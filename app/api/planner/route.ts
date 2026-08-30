@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { migratePlannerData } from "@/lib/annotations";
 import type { PlannerCloudSnapshot } from "@/lib/planner-cloud-types";
+import { isValidCloudSnapshot } from "@/lib/planner-cloud-types";
 import {
   isValidPlannerId,
   readPlannerSnapshot,
@@ -25,18 +27,22 @@ export async function PUT(request: Request) {
   try {
     const body = (await request.json()) as {
       id?: string;
-      snapshot?: PlannerCloudSnapshot;
+      snapshot?: PlannerCloudSnapshot & { version?: number };
     };
 
     const id = body.id ?? "";
     const snapshot = body.snapshot;
 
-    if (!isValidPlannerId(id) || !snapshot || snapshot.version !== 3) {
+    if (!isValidPlannerId(id) || !isValidCloudSnapshot(snapshot)) {
       return NextResponse.json({ error: "Invalid planner data" }, { status: 400 });
     }
 
+    const normalized = migratePlannerData(snapshot);
+
     await writePlannerSnapshot(id, {
-      ...snapshot,
+      ...normalized,
+      calendarFeedUrl: snapshot.calendarFeedUrl ?? null,
+      calendarCache: snapshot.calendarCache ?? null,
       updatedAt: new Date().toISOString(),
     });
 

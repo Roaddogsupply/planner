@@ -7,6 +7,12 @@ export type PlannerCloudSnapshot = PlannerData & {
   updatedAt: string;
 };
 
+export function isValidCloudSnapshot(
+  snapshot: { version?: number } | null | undefined,
+): snapshot is PlannerCloudSnapshot {
+  return snapshot?.version === 3 || snapshot?.version === 4;
+}
+
 export function createCloudSnapshot(
   data: PlannerData,
   calendarFeedUrl?: string | null,

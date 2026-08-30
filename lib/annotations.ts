@@ -5,11 +5,13 @@ import {
 } from "@/lib/text-styles";
 import { normalizeFontFamily } from "@/lib/google-fonts";
 import { PAGE_DISPLAY_ASPECT } from "@/lib/image-utils";
+import { DEFAULT_INSTANCE_ID, type SectionInstance } from "@/lib/section-instances";
 
 export type TextAnnotation = {
   kind: "text";
   id: string;
   page: number;
+  instanceId?: string;
   x: number;
   y: number;
   text: string;
@@ -23,6 +25,7 @@ export type CheckboxAnnotation = {
   kind: "checkbox";
   id: string;
   page: number;
+  instanceId?: string;
   x: number;
   y: number;
   checked: boolean;
@@ -33,6 +36,7 @@ export type ImageAnnotation = {
   kind: "image";
   id: string;
   page: number;
+  instanceId?: string;
   x: number;
   y: number;
   width: number;
@@ -47,6 +51,17 @@ export type PlannerAnnotation = TextAnnotation | CheckboxAnnotation | ImageAnnot
 export type PlannerTool = "text" | "checkbox" | "image";
 
 export type PlannerData = {
+  version: 4;
+  annotations: PlannerAnnotation[];
+  sectionInstances: SectionInstance[];
+  activeSectionInstances: Record<number, string>;
+  lastPage: number;
+  zoom: number;
+  tool: PlannerTool;
+  textStyle?: TextStyle;
+};
+
+export type LegacyPlannerData = {
   version: 3;
   annotations: PlannerAnnotation[];
   lastPage: number;
@@ -54,6 +69,34 @@ export type PlannerData = {
   tool: PlannerTool;
   textStyle?: TextStyle;
 };
+
+export type AnyPlannerData = PlannerData | LegacyPlannerData;
+
+export function migratePlannerData(raw: AnyPlannerData): PlannerData {
+  if (raw.version === 4) {
+    return {
+      version: 4,
+      annotations: raw.annotations,
+      sectionInstances: raw.sectionInstances ?? [],
+      activeSectionInstances: raw.activeSectionInstances ?? {},
+      lastPage: raw.lastPage,
+      zoom: raw.zoom,
+      tool: raw.tool,
+      textStyle: raw.textStyle,
+    };
+  }
+
+  return {
+    version: 4,
+    annotations: raw.annotations,
+    sectionInstances: [],
+    activeSectionInstances: {},
+    lastPage: raw.lastPage,
+    zoom: raw.zoom,
+    tool: raw.tool,
+    textStyle: raw.textStyle,
+  };
+}
 
 const STORAGE_KEY = "road-dog-planner-data";
 
@@ -66,12 +109,19 @@ function inferImageAspectRatio(raw: Record<string, unknown>) {
   return 1;
 }
 
+function normalizeInstanceId(raw: unknown) {
+  return typeof raw === "string" && raw.length > 0 ? raw : undefined;
+}
+
 function normalizeAnnotation(raw: Record<string, unknown>): PlannerAnnotation | null {
+  const instanceId = normalizeInstanceId(raw.instanceId);
+
   if (raw.kind === "image" && typeof raw.src === "string") {
     return {
       kind: "image",
       id: String(raw.id),
       page: Number(raw.page),
+      instanceId,
       x: Number(raw.x),
       y: Number(raw.y),
       width: Number(raw.width ?? 25),
@@ -81,7 +131,16 @@ function normalizeAnnotation(raw: Record<string, unknown>): PlannerAnnotation | 
     };
   }
   if (raw.kind === "checkbox") {
-    return raw as CheckboxAnnotation;
+    return {
+      kind: "checkbox",
+      id: String(raw.id),
+      page: Number(raw.page),
+      instanceId,
+      x: Number(raw.x),
+      y: Number(raw.y),
+      checked: Boolean(raw.checked),
+      size: Number(raw.size ?? 2.2),
+    };
   }
   if (raw.kind === "text" || raw.text !== undefined) {
     const style = normalizeTextStyle({
@@ -93,6 +152,7 @@ function normalizeAnnotation(raw: Record<string, unknown>): PlannerAnnotation | 
       kind: "text",
       id: String(raw.id),
       page: Number(raw.page),
+      instanceId,
       x: Number(raw.x),
       y: Number(raw.y),
       text: String(raw.text ?? ""),
@@ -105,10 +165,42 @@ function normalizeAnnotation(raw: Record<string, unknown>): PlannerAnnotation | 
   return null;
 }
 
+function normalizeSectionInstances(raw: unknown): SectionInstance[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const record = item as Record<string, unknown>;
+      if (typeof record.id !== "string" || typeof record.basePage !== "number") return null;
+      return {
+        id: record.id,
+        basePage: Number(record.basePage),
+        label: typeof record.label === "string" ? record.label : "Copy",
+        createdAt:
+          typeof record.createdAt === "string" ? record.createdAt : new Date(0).toISOString(),
+      } satisfies SectionInstance;
+    })
+    .filter((item): item is SectionInstance => item !== null);
+}
+
+function normalizeActiveSectionInstances(raw: unknown): Record<number, string> {
+  if (!raw || typeof raw !== "object") return {};
+  const result: Record<number, string> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    const page = Number(key);
+    if (Number.isFinite(page) && typeof value === "string") {
+      result[page] = value;
+    }
+  }
+  return result;
+}
+
 export function loadPlannerData(): PlannerData {
   const fallback: PlannerData = {
-    version: 3,
+    version: 4,
     annotations: [],
+    sectionInstances: [],
+    activeSectionInstances: {},
     lastPage: 1,
     zoom: 1,
     tool: "text",
@@ -120,20 +212,25 @@ export function loadPlannerData(): PlannerData {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return fallback;
 
-    const parsed = JSON.parse(raw) as Partial<PlannerData> & {
+    const parsed = JSON.parse(raw) as Partial<PlannerData> & Partial<LegacyPlannerData> & {
       annotations?: Record<string, unknown>[];
     };
 
-    return {
-      version: 3,
+    const version = parsed.version === 4 ? 4 : 3;
+    const migrated = migratePlannerData({
+      version,
       annotations: (parsed.annotations ?? [])
         .map((item) => normalizeAnnotation(item))
         .filter((item): item is PlannerAnnotation => item !== null),
+      sectionInstances: normalizeSectionInstances(parsed.sectionInstances),
+      activeSectionInstances: normalizeActiveSectionInstances(parsed.activeSectionInstances),
       lastPage: parsed.lastPage ?? 1,
       zoom: parsed.zoom ?? 1,
       tool: parsed.tool ?? "text",
       textStyle: normalizeTextStyle(parsed.textStyle),
-    };
+    } as AnyPlannerData);
+
+    return migrated;
   } catch {
     return fallback;
   }
@@ -149,12 +246,14 @@ export function createTextAnnotation(
   x: number,
   y: number,
   style: Partial<TextStyle> = {},
+  instanceId?: string,
 ): TextAnnotation {
   const normalized = normalizeTextStyle(style);
   return {
     kind: "text",
     id: crypto.randomUUID(),
     page,
+    instanceId: instanceId === DEFAULT_INSTANCE_ID ? undefined : instanceId,
     x,
     y,
     text: "",
@@ -169,11 +268,13 @@ export function createCheckboxAnnotation(
   page: number,
   x: number,
   y: number,
+  instanceId?: string,
 ): CheckboxAnnotation {
   return {
     kind: "checkbox",
     id: crypto.randomUUID(),
     page,
+    instanceId: instanceId === DEFAULT_INSTANCE_ID ? undefined : instanceId,
     x,
     y,
     checked: true,
@@ -189,11 +290,13 @@ export function createImageAnnotation(
   width = 28,
   height = 20,
   aspectRatio = (width / height) * PAGE_DISPLAY_ASPECT,
+  instanceId?: string,
 ): ImageAnnotation {
   return {
     kind: "image",
     id: crypto.randomUUID(),
     page,
+    instanceId: instanceId === DEFAULT_INSTANCE_ID ? undefined : instanceId,
     x,
     y,
     width,

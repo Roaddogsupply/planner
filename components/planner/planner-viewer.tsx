@@ -7,6 +7,7 @@ import {
   isImageAnnotation,
   isTextAnnotation,
   loadPlannerData,
+  migratePlannerData,
   savePlannerData,
   type ImageAnnotation,
   type PlannerAnnotation,
@@ -34,6 +35,16 @@ import {
 } from "@/lib/planner-cloud-sync";
 import { buildRestoreLink, resolvePlannerId } from "@/lib/planner-sync-id";
 import { preloadDefaultFonts } from "@/lib/google-fonts";
+import {
+  createSectionInstance,
+  DEFAULT_INSTANCE_ID,
+  getInstancesForPage,
+  nextCopyLabel,
+  resolveActiveInstanceId,
+  type SectionInstance,
+} from "@/lib/section-instances";
+import { getSectionForPage, isSectionTargetPage, type SectionIndexEntry } from "@/lib/section-indexes";
+import { SectionInstanceBar } from "@/components/planner/section-instance-bar";
 
 function formatLoadingMessage(progress: LoadProgress | null) {
   if (!progress) return "Starting planner…";
@@ -67,6 +78,8 @@ export function PlannerViewer() {
   const [tool, setTool] = useState<PlannerTool>("text");
   const [textStyle, setTextStyle] = useState<TextStyle>(DEFAULT_TEXT_STYLE);
   const [annotations, setAnnotations] = useState<PlannerAnnotation[]>([]);
+  const [sectionInstances, setSectionInstances] = useState<SectionInstance[]>([]);
+  const [activeSectionInstances, setActiveSectionInstances] = useState<Record<number, string>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [savedLabel, setSavedLabel] = useState("Loading…");
   const [restoreLink, setRestoreLink] = useState("");
@@ -100,24 +113,22 @@ export function PlannerViewer() {
       const resolvedFeedUrl = cloud?.calendarFeedUrl || feedUrl || null;
 
       if (cloud) {
-        setPage(cloud.lastPage);
-        setZoom(cloud.zoom || fitZoom());
-        setTool(cloud.tool);
-        setAnnotations(cloud.annotations);
-        setTextStyle(normalizeTextStyle(cloud.textStyle));
-        savePlannerData({
-          version: 3,
-          annotations: cloud.annotations,
-          lastPage: cloud.lastPage,
-          zoom: cloud.zoom,
-          tool: cloud.tool,
-          textStyle: normalizeTextStyle(cloud.textStyle),
-        });
+        const migrated = migratePlannerData(cloud);
+        setPage(migrated.lastPage);
+        setZoom(migrated.zoom || fitZoom());
+        setTool(migrated.tool);
+        setAnnotations(migrated.annotations);
+        setSectionInstances(migrated.sectionInstances);
+        setActiveSectionInstances(migrated.activeSectionInstances);
+        setTextStyle(normalizeTextStyle(migrated.textStyle));
+        savePlannerData(migrated);
       } else {
         setPage(local.lastPage);
         setZoom(local.zoom || fitZoom());
         setTool(local.tool);
         setAnnotations(local.annotations);
+        setSectionInstances(local.sectionInstances);
+        setActiveSectionInstances(local.activeSectionInstances);
         setTextStyle(normalizeTextStyle(local.textStyle));
 
         if (local.annotations.length > 0 || local.lastPage > 1) {
@@ -176,8 +187,10 @@ export function PlannerViewer() {
             plannerId,
             createCloudSnapshot(
               {
-                version: 3,
+                version: 4,
                 annotations,
+                sectionInstances,
+                activeSectionInstances,
                 lastPage: page,
                 zoom,
                 tool,
@@ -197,7 +210,7 @@ export function PlannerViewer() {
         setCalendarSyncing(false);
       }
     },
-    [plannerId, annotations, page, zoom, tool, textStyle],
+    [plannerId, annotations, sectionInstances, activeSectionInstances, page, zoom, tool, textStyle],
   );
 
   useEffect(() => {
@@ -253,12 +266,30 @@ export function PlannerViewer() {
         : null;
 
     const snapshot = createCloudSnapshot(
-      { version: 3, annotations, lastPage: page, zoom, tool, textStyle },
+      {
+        version: 4,
+        annotations,
+        sectionInstances,
+        activeSectionInstances,
+        lastPage: page,
+        zoom,
+        tool,
+        textStyle,
+      },
       calendarFeedUrl,
       calendarCache,
     );
 
-    savePlannerData({ version: 3, annotations, lastPage: page, zoom, tool, textStyle });
+    savePlannerData({
+      version: 4,
+      annotations,
+      sectionInstances,
+      activeSectionInstances,
+      lastPage: page,
+      zoom,
+      tool,
+      textStyle,
+    });
     scheduleCloudSave(plannerId, snapshot, (status) => {
       if (status === "saving") setSavedLabel("Saving…");
       if (status === "saved") setSavedLabel("Saved to cloud");
@@ -266,6 +297,8 @@ export function PlannerViewer() {
     });
   }, [
     annotations,
+    sectionInstances,
+    activeSectionInstances,
     page,
     zoom,
     tool,
@@ -320,6 +353,86 @@ export function PlannerViewer() {
 
   const totalPages = pdf?.numPages ?? 597;
 
+  const activeSectionInstanceId = useMemo(() => {
+    if (!isSectionTargetPage(page)) return DEFAULT_INSTANCE_ID;
+    return resolveActiveInstanceId(activeSectionInstances, page, sectionInstances);
+  }, [page, activeSectionInstances, sectionInstances]);
+
+  const visibleAnnotations = useMemo(() => {
+    return annotations.filter((item) => {
+      if (item.page !== page) return false;
+      if (!isSectionTargetPage(page)) return true;
+      const stored = item.instanceId ?? DEFAULT_INSTANCE_ID;
+      return stored === activeSectionInstanceId;
+    });
+  }, [annotations, page, activeSectionInstanceId]);
+
+  const sectionInstanceCounts = useMemo(() => {
+    const counts: Record<number, number> = {};
+    for (const instance of sectionInstances) {
+      counts[instance.basePage] = (counts[instance.basePage] ?? 0) + 1;
+    }
+    return counts;
+  }, [sectionInstances]);
+
+  const navigateToSection = useCallback(
+    (targetPage: number, instanceId?: string) => {
+      setPage(targetPage);
+      if (instanceId) {
+        setActiveSectionInstances((current) => ({ ...current, [targetPage]: instanceId }));
+      }
+    },
+    [],
+  );
+
+  const handleAddSectionCopy = useCallback(
+    (section: SectionIndexEntry) => {
+      const existing = getInstancesForPage(sectionInstances, section.page);
+      const label = nextCopyLabel(section.label, existing.length + 1);
+      const created = createSectionInstance(section.page, label);
+      setSectionInstances((current) => [...current, created]);
+      navigateToSection(section.page, created.id);
+    },
+    [sectionInstances, navigateToSection],
+  );
+
+  const handleAddCopyForCurrentPage = useCallback(() => {
+    const section = getSectionForPage(page);
+    if (!section) return;
+    handleAddSectionCopy(section);
+  }, [page, handleAddSectionCopy]);
+
+  const handleSelectSectionInstance = useCallback(
+    (instanceId: string) => {
+      setActiveSectionInstances((current) => ({ ...current, [page]: instanceId }));
+    },
+    [page],
+  );
+
+  const handleDeleteSectionInstance = useCallback(
+    (instanceId: string) => {
+      const confirmed = window.confirm(
+        "Delete this copy and all notes on it? This cannot be undone.",
+      );
+      if (!confirmed) return;
+
+      setSectionInstances((current) => current.filter((item) => item.id !== instanceId));
+      setAnnotations((current) =>
+        current.filter((item) => item.instanceId !== instanceId),
+      );
+      setActiveSectionInstances((current) => {
+        const next = { ...current };
+        if (next[page] === instanceId) {
+          next[page] = DEFAULT_INSTANCE_ID;
+        }
+        return next;
+      });
+    },
+    [page],
+  );
+
+  const currentSection = getSectionForPage(page);
+
   const handleAddAnnotation = useCallback((annotation: PlannerAnnotation) => {
     setAnnotations((current) => [...current, annotation]);
   }, []);
@@ -361,7 +474,22 @@ export function PlannerViewer() {
 
   const handleExport = () => {
     const blob = new Blob(
-      [JSON.stringify({ version: 3, annotations, lastPage: page, zoom, tool, textStyle }, null, 2)],
+      [
+        JSON.stringify(
+          {
+            version: 4,
+            annotations,
+            sectionInstances,
+            activeSectionInstances,
+            lastPage: page,
+            zoom,
+            tool,
+            textStyle,
+          },
+          null,
+          2,
+        ),
+      ],
       { type: "application/json" },
     );
     const url = URL.createObjectURL(blob);
@@ -378,15 +506,35 @@ export function PlannerViewer() {
     );
     if (!confirmed || !plannerId) return;
     setAnnotations([]);
+    setSectionInstances([]);
+    setActiveSectionInstances({});
     setSelectedId(null);
     const cleared = createCloudSnapshot(
-      { version: 3, annotations: [], lastPage: page, zoom, tool, textStyle },
+      {
+        version: 4,
+        annotations: [],
+        sectionInstances: [],
+        activeSectionInstances: {},
+        lastPage: page,
+        zoom,
+        tool,
+        textStyle,
+      },
       calendarFeedUrl,
       calendarEvents.length > 0 && calendarLastSynced
         ? { events: calendarEvents, fetchedAt: calendarLastSynced }
         : null,
     );
-    savePlannerData({ version: 3, annotations: [], lastPage: page, zoom, tool, textStyle });
+    savePlannerData({
+      version: 4,
+      annotations: [],
+      sectionInstances: [],
+      activeSectionInstances: {},
+      lastPage: page,
+      zoom,
+      tool,
+      textStyle,
+    });
     void savePlannerToCloud(plannerId, cleared);
   };
 
@@ -525,15 +673,29 @@ export function PlannerViewer() {
                 {customTabLabel(page)} — add text and images anywhere on this page
               </p>
             )}
+            {currentSection && (
+              <SectionInstanceBar
+                label={currentSection.label}
+                basePage={page}
+                instances={sectionInstances}
+                activeInstanceId={activeSectionInstanceId}
+                onSelectInstance={handleSelectSectionInstance}
+                onAddCopy={handleAddCopyForCurrentPage}
+                onDeleteCopy={handleDeleteSectionInstance}
+              />
+            )}
             <PdfPage
               pdf={pdf}
               pageNumber={page}
               scale={zoom}
               tool={tool}
-              annotations={annotations}
+              annotations={visibleAnnotations}
               selectedId={selectedId}
               textStyle={textStyle}
-              onPageNavigate={setPage}
+              activeInstanceId={activeSectionInstanceId}
+              sectionInstanceCounts={sectionInstanceCounts}
+              onPageNavigate={navigateToSection}
+              onAddSectionCopy={handleAddSectionCopy}
               onAddAnnotation={handleAddAnnotation}
               onUpdateAnnotation={handleUpdateAnnotation}
               onSelectAnnotation={setSelectedId}
