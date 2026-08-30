@@ -138,6 +138,7 @@
   --planner-shadow: oklch(0.45 0.04 290 / 25%);
   --planner-status-bg: oklch(0.97 0.02 290);
   --planner-status-text: oklch(0.35 0.05 290);
+  --planner-index-panel: oklch(0.955 0.018 290);
 }
 
 .planner-app {
@@ -210,4 +211,26 @@
   border: 2px solid oklch(0.99 0 0);
   border-radius: 9999px;
   box-shadow: 0 1px 4px oklch(0 0 0 / 25%);
+}
+
+.section-index-overlay {
+  background: var(--planner-index-panel);
+}
+
+.section-index-item {
+  color: oklch(0.38 0.06 290);
+  font-family: var(--font-geist-sans), sans-serif;
+  font-size: clamp(0.62rem, 1.05vw, 0.82rem);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  padding: 0.15rem 0.35rem;
+  text-transform: uppercase;
+  border-radius: 0.2rem;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.section-index-item:hover {
+  background: oklch(0.92 0.04 290 / 70%);
+  color: oklch(0.28 0.08 290);
 }

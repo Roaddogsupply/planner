@@ -25,6 +25,8 @@ import { parseCalendarDayFromUri, prepareCalendarCells } from "@/lib/calendar-ce
 import type { CalendarDayCell, CalendarEvent } from "@/lib/calendar-types";
 import { imageHeightForWidth, imageWidthForHeight } from "@/lib/image-utils";
 import { CalendarOverlay } from "@/components/planner/calendar-overlay";
+import { SectionIndexOverlay } from "@/components/planner/section-index-overlay";
+import { getSectionIndex, isSectionIndexOverlayLink } from "@/lib/section-indexes";
 
 type PdfPageProps = {
   pdf: PDFDocumentProxy;
@@ -210,7 +212,10 @@ export function PdfPage({
         }
 
         if (!cancelled) {
-          setLinks(pageLinks);
+          const filteredLinks = pageLinks.filter(
+            (link) => !isSectionIndexOverlayLink(pageNumber, link),
+          );
+          setLinks(filteredLinks);
           setCalendarCells(prepareCalendarCells(dayCells));
         }
       } catch (renderError) {
@@ -435,6 +440,7 @@ export function PdfPage({
 
   const pageImages = pageAnnotations.filter(isImageAnnotation);
   const pageOthers = pageAnnotations.filter((item) => !isImageAnnotation(item));
+  const sectionIndex = getSectionIndex(pageNumber);
 
   return (
     <div className="relative mx-auto w-full" style={{ maxWidth: pageSize.width }}>
@@ -451,6 +457,10 @@ export function PdfPage({
         <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
 
         <CalendarOverlay cells={calendarCells} events={calendarEvents} />
+
+        {sectionIndex && (
+          <SectionIndexOverlay config={sectionIndex} onNavigate={onPageNavigate} />
+        )}
 
         {pageImages.map((annotation) => {
           const isSelected = selectedId === annotation.id;
