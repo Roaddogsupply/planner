@@ -262,10 +262,29 @@
   position: relative;
 }
 
-.section-index-row-compact .section-index-bar {
+.section-index-row-compact .section-index-bar,
+.section-index-bar.section-index-row-compact {
   font-size: clamp(0.42rem, 0.72vw, 0.58rem);
   letter-spacing: 0.1em;
   padding: 0 0.2rem;
+}
+
+.paper-grid-cell {
+  pointer-events: auto;
+  border: 1px solid oklch(0.22 0 0 / 20%);
+  box-sizing: border-box;
+  background: oklch(0.99 0.005 90 / 35%);
+}
+
+.paper-grid-preview {
+  pointer-events: auto;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+}
+
+.paper-grid-bar {
+  pointer-events: auto;
 }
 
 .section-index-add-count {
