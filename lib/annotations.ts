@@ -88,7 +88,7 @@ export function migratePlannerData(raw: AnyPlannerData): PlannerData {
       activeSectionInstances: raw.activeSectionInstances ?? {},
       lastPage: raw.lastPage,
       zoom: raw.zoom,
-      tool: raw.tool,
+      tool: normalizeTool(raw.tool),
       textStyle: raw.textStyle,
     };
   }
@@ -100,7 +100,7 @@ export function migratePlannerData(raw: AnyPlannerData): PlannerData {
     activeSectionInstances: {},
     lastPage: raw.lastPage,
     zoom: raw.zoom,
-    tool: raw.tool,
+    tool: normalizeTool(raw.tool),
     textStyle: raw.textStyle,
   };
 }
@@ -233,7 +233,7 @@ export function loadPlannerData(): PlannerData {
       activeSectionInstances: normalizeActiveSectionInstances(parsed.activeSectionInstances),
       lastPage: parsed.lastPage ?? 1,
       zoom: parsed.zoom ?? 1,
-      tool: parsed.tool ?? "navigate",
+      tool: normalizeTool(parsed.tool),
       textStyle: normalizeTextStyle(parsed.textStyle),
     } as AnyPlannerData);
 
