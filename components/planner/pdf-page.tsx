@@ -176,6 +176,7 @@ export function PdfPage({
 
     async function drawPage() {
       setLoading(true);
+      setCalendarLayout("default");
 
       try {
         const page = await pdf.getPage(pageNumber);
