@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
 import type { CheckboxAnnotation, ImageAnnotation, PlannerAnnotation, PlannerTool, TextAnnotation } from "@/lib/annotations";
@@ -313,13 +314,16 @@ export function PdfPage({
     weekFocusRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [pageNumber, weekFocusY, calendarLayout]);
 
-  const getPointerPercent = (event: ReactMouseEvent) => {
+  const getPointerPercentFromClient = (clientX: number, clientY: number) => {
     const rect = containerRef.current!.getBoundingClientRect();
     return {
-      x: ((event.clientX - rect.left) / rect.width) * 100,
-      y: ((event.clientY - rect.top) / rect.height) * 100,
+      x: ((clientX - rect.left) / rect.width) * 100,
+      y: ((clientY - rect.top) / rect.height) * 100,
     };
   };
+
+  const getPointerPercent = (event: ReactMouseEvent | ReactPointerEvent) =>
+    getPointerPercentFromClient(event.clientX, event.clientY);
 
   const handleLinkClick = (link: LinkOverlay) => {
     if (link.page) {
@@ -386,6 +390,25 @@ export function PdfPage({
         }
       }
       window.open(link.uri, "_blank", "noopener,noreferrer");
+    }
+  };
+
+  const tryNavigateLinkAt = (clientX: number, clientY: number) => {
+    if (!containerRef.current || links.length === 0) return false;
+
+    const point = getPointerPercentFromClient(clientX, clientY);
+    const link = hitTestLink(point.x, point.y, links);
+    if (!link) return false;
+
+    handleLinkClick(link);
+    return true;
+  };
+
+  const handlePointerDownCapture = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (tool !== "navigate") return;
+    if (tryNavigateLinkAt(event.clientX, event.clientY)) {
+      event.preventDefault();
+      event.stopPropagation();
     }
   };
 
@@ -580,6 +603,7 @@ export function PdfPage({
   const pageImages = pageAnnotations.filter(isImageAnnotation);
   const pageOthers = pageAnnotations.filter((item) => !isImageAnnotation(item));
   const sectionIndex = getSectionIndex(pageNumber);
+  const browseMode = tool === "navigate";
 
   return (
     <div className="relative mx-auto w-full" style={{ maxWidth: pageSize.width }}>
@@ -597,6 +621,7 @@ export function PdfPage({
           loading && "opacity-70",
         )}
         style={{ aspectRatio: `${pageSize.width} / ${pageSize.height}` }}
+        onPointerDownCapture={handlePointerDownCapture}
         onClick={handlePageClick}
       >
         <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
@@ -628,10 +653,15 @@ export function PdfPage({
 
         {pageImages.map((annotation) => {
           const isSelected = selectedId === annotation.id;
+          const passThroughInBrowse = browseMode && !isSelected;
           return (
             <div
               key={annotation.id}
-              className={cn("absolute z-10", isSelected && "outline outline-2 outline-offset-0 outline-primary/60")}
+              className={cn(
+                "absolute z-10",
+                passThroughInBrowse && "pointer-events-none",
+                isSelected && "outline outline-2 outline-offset-0 outline-primary/60",
+              )}
               style={{
                 left: `${annotation.x}%`,
                 top: `${annotation.y}%`,
@@ -699,11 +729,13 @@ export function PdfPage({
           if (!isTextAnnotation(annotation)) return null;
 
           const isSelected = selectedId === annotation.id;
+          const passThroughInBrowse = browseMode && !isSelected;
           return (
             <div
               key={annotation.id}
               className={cn(
                 "absolute z-20 min-h-[1.1rem] rounded-sm border border-transparent px-0.5",
+                passThroughInBrowse && "pointer-events-none",
                 isSelected && "border-primary/60 bg-primary/5",
               )}
               style={{

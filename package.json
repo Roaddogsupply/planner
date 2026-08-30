@@ -6,7 +6,8 @@
     "dev": "next dev -p 4317",
     "build": "next build",
     "start": "next start -p ${PORT:-3000}",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "node scripts/sync-pdf-worker.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
