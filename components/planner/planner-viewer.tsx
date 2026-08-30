@@ -137,7 +137,7 @@ export function PlannerViewer() {
         const migrated = migratePlannerData(cloud);
         setPage(migrated.lastPage);
         setZoom(migrated.zoom || fitZoom());
-        setTool(migrated.tool);
+        setTool("navigate");
         setAnnotations(migrated.annotations);
         setSectionInstances(migrated.sectionInstances);
         setActiveSectionInstances(migrated.activeSectionInstances);
@@ -146,7 +146,7 @@ export function PlannerViewer() {
       } else {
         setPage(local.lastPage);
         setZoom(local.zoom || fitZoom());
-        setTool(local.tool);
+        setTool("navigate");
         setAnnotations(local.annotations);
         setSectionInstances(local.sectionInstances);
         setActiveSectionInstances(local.activeSectionInstances);

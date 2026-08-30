@@ -80,10 +80,15 @@ export type LegacyPlannerData = {
 export type AnyPlannerData = PlannerData | LegacyPlannerData;
 
 export function migratePlannerData(raw: AnyPlannerData): PlannerData {
+  const stripEmptyTextBoxes = (annotations: PlannerAnnotation[]) =>
+    annotations.filter(
+      (item) => !(item.kind === "text" && item.text.trim().length === 0),
+    );
+
   if (raw.version === 4) {
     return {
       version: 4,
-      annotations: raw.annotations,
+      annotations: stripEmptyTextBoxes(raw.annotations),
       sectionInstances: raw.sectionInstances ?? [],
       activeSectionInstances: raw.activeSectionInstances ?? {},
       lastPage: raw.lastPage,
@@ -95,7 +100,7 @@ export function migratePlannerData(raw: AnyPlannerData): PlannerData {
 
   return {
     version: 4,
-    annotations: raw.annotations,
+    annotations: stripEmptyTextBoxes(raw.annotations),
     sectionInstances: [],
     activeSectionInstances: {},
     lastPage: raw.lastPage,

@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
-  type PointerEvent as ReactPointerEvent,
 } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
 import type { CheckboxAnnotation, ImageAnnotation, PlannerAnnotation, PlannerTool, TextAnnotation } from "@/lib/annotations";
@@ -170,8 +169,6 @@ export function PdfPage({
     anchorY: number;
     aspectRatio: number;
   } | null>(null);
-  /** Browse mode handles links on pointerdown; suppress the follow-up click. */
-  const linkGestureHandledRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -324,7 +321,7 @@ export function PdfPage({
     };
   };
 
-  const getPointerPercent = (event: ReactMouseEvent | ReactPointerEvent) =>
+  const getPointerPercent = (event: ReactMouseEvent) =>
     getPointerPercentFromClient(event.clientX, event.clientY);
 
   const handleLinkClick = (link: LinkOverlay) => {
@@ -395,44 +392,15 @@ export function PdfPage({
     }
   };
 
-  const tryNavigateLinkAt = (clientX: number, clientY: number) => {
-    if (!containerRef.current || links.length === 0) return false;
-
-    const point = getPointerPercentFromClient(clientX, clientY);
-    const link = hitTestLink(point.x, point.y, links);
-    if (!link) return false;
-
-    handleLinkClick(link);
-    return true;
-  };
-
-  const handlePointerDownCapture = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (tool !== "navigate") return;
-    linkGestureHandledRef.current = false;
-    if (tryNavigateLinkAt(event.clientX, event.clientY)) {
-      linkGestureHandledRef.current = true;
-      event.preventDefault();
-      event.stopPropagation();
-    }
-  };
-
   const handlePageClick = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (!containerRef.current) return;
-
-    if (tool === "navigate" && linkGestureHandledRef.current) {
-      linkGestureHandledRef.current = false;
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
+    if (tool === "navigate") return;
 
     const point = getPointerPercent(event);
-    if (tool !== "navigate") {
-      const link = hitTestLink(point.x, point.y, links);
-      if (link) {
-        handleLinkClick(link);
-        return;
-      }
+    const link = hitTestLink(point.x, point.y, links);
+    if (link) {
+      handleLinkClick(link);
+      return;
     }
 
     const pageCheckboxes = annotations.filter(
@@ -631,13 +599,34 @@ export function PdfPage({
               : tool === "checkbox"
                 ? "cursor-crosshair"
                 : "cursor-pointer",
-          loading && "opacity-70",
+          loading && "opacity-70 pointer-events-none",
         )}
         style={{ aspectRatio: `${pageSize.width} / ${pageSize.height}` }}
-        onPointerDownCapture={handlePointerDownCapture}
         onClick={handlePageClick}
       >
         <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
+
+        {browseMode &&
+          !loading &&
+          links.map((link, index) => (
+            <button
+              key={`pdf-link-${index}-${link.page ?? link.uri ?? "dest"}`}
+              type="button"
+              tabIndex={-1}
+              aria-label="Navigate"
+              className="absolute z-[8] m-0 cursor-pointer border-0 bg-transparent p-0"
+              style={{
+                left: `${link.x}%`,
+                top: `${link.y}%`,
+                width: `${link.width}%`,
+                height: `${link.height}%`,
+              }}
+              onClick={(event) => {
+                event.stopPropagation();
+                handleLinkClick(link);
+              }}
+            />
+          ))}
 
         {weekFocusY != null && (
           <div
