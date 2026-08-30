@@ -199,6 +199,13 @@ export function filterMainGridCells(
     );
   }
 
+  if (compact && variant === "overview") {
+    // Year/quarter mini-cals hug the page edges — keep Sunday columns on the left.
+    return cells.filter(
+      (cell) => cell.x >= 5 && cell.x <= 96 && cell.y >= 12 && cell.y <= 92,
+    );
+  }
+
   if (compact) {
     return cells.filter(
       (cell) => cell.x >= 10 && cell.x <= 95 && cell.y >= 12 && cell.y <= 90,

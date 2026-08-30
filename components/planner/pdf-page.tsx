@@ -35,6 +35,8 @@ import {
   getCalendarSidebarTabIndex,
   isCalendarIndexReady,
   isCalendarPlannerSpread,
+  isCompactCalendarPage,
+  isMonthlyPlannerPage,
   calendarDateContext,
   needsCalendarSidebarOverride,
   parseDateFromCalendarUri,
@@ -218,7 +220,7 @@ export function PdfPage({
         );
         setLinks(storedLinks);
 
-        const dayCells = collectDayCellsFromLinks(storedLinks);
+        let dayCells = collectDayCellsFromLinks(storedLinks);
         const index = calendarPageIndexRef.current;
 
         const pageText = (await page.getTextContent()).items
@@ -227,38 +229,42 @@ export function PdfPage({
         const isDailySpread =
           pageText.includes("Breakfast") && pageText.includes("Snacks");
 
-        // Fallback when prebuilt links are not loaded yet (local dev without JSON).
-        if (dayCells.length === 0) {
-          try {
-            for (const annotation of await page.getAnnotations()) {
-              if (annotation.subtype !== "Link") continue;
+        // Prefer live PDF positions when available (matches desktop preview exactly).
+        try {
+          const liveCells: CalendarDayCell[] = [];
+          for (const annotation of await page.getAnnotations()) {
+            if (annotation.subtype !== "Link") continue;
 
-              const rect = annotation.rect as [number, number, number, number];
-              const [vx1, vy1] = viewport.convertToViewportPoint(rect[0], rect[1]);
-              const [vx2, vy2] = viewport.convertToViewportPoint(rect[2], rect[3]);
-              const left = Math.min(vx1, vx2);
-              const top = Math.min(vy1, vy2);
-              const width = Math.abs(vx2 - vx1);
-              const height = Math.abs(vy2 - vy1);
+            const rect = annotation.rect as [number, number, number, number];
+            const [vx1, vy1] = viewport.convertToViewportPoint(rect[0], rect[1]);
+            const [vx2, vy2] = viewport.convertToViewportPoint(rect[2], rect[3]);
+            const left = Math.min(vx1, vx2);
+            const top = Math.min(vy1, vy2);
+            const width = Math.abs(vx2 - vx1);
+            const height = Math.abs(vy2 - vy1);
 
-              const base: LinkOverlay = {
-                x: toPercent(left, viewport.width),
-                y: toPercent(top, viewport.height),
-                width: toPercent(width, viewport.width),
-                height: toPercent(height, viewport.height),
-              };
+            const base: LinkOverlay = {
+              x: toPercent(left, viewport.width),
+              y: toPercent(top, viewport.height),
+              width: toPercent(width, viewport.width),
+              height: toPercent(height, viewport.height),
+            };
 
-              const linkUrl = getAnnotationLinkUrl(annotation);
-              if (linkUrl) {
-                const calendarDay = parseCalendarDayFromUri(linkUrl, base, true);
-                if (calendarDay) {
-                  dayCells.push(calendarDay);
-                }
-              }
+            const linkUrl = getAnnotationLinkUrl(annotation);
+            if (linkUrl) {
+              const calendarDay = parseCalendarDayFromUri(
+                linkUrl,
+                base,
+                !isMonthlyPlannerPage(pageNumber),
+              );
+              if (calendarDay) liveCells.push(calendarDay);
             }
-          } catch (annotationError) {
-            console.warn("Calendar overlay links unavailable for this page:", annotationError);
           }
+          if (liveCells.length > 0) {
+            dayCells = liveCells;
+          }
+        } catch (annotationError) {
+          console.warn("Calendar overlay links unavailable for this page:", annotationError);
         }
 
         if (cancelled || generation !== drawGenerationRef.current) return;
