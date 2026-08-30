@@ -1,3 +1,7 @@
+export const PAGE_WIDTH = 816;
+export const PAGE_HEIGHT = 595;
+export const PAGE_DISPLAY_ASPECT = PAGE_WIDTH / PAGE_HEIGHT;
+
 export async function compressImageFile(file: File, maxDimension = 1200): Promise<string> {
   if (!file.type.startsWith("image/")) {
     throw new Error("Please choose an image file (JPG, PNG, etc.).");
@@ -45,7 +49,17 @@ export async function compressImageFile(file: File, maxDimension = 1200): Promis
   });
 }
 
+/** Height % of page that matches width % and the image's natural aspect ratio. */
 export function imageAspectHeightPercent(widthPercent: number, aspectRatio: number) {
-  // aspectRatio = naturalWidth / naturalHeight
-  return (widthPercent / aspectRatio) * (816 / 595);
+  return (widthPercent / aspectRatio) * PAGE_DISPLAY_ASPECT;
+}
+
+/** Recompute height when width changes so the image is not stretched. */
+export function imageHeightForWidth(widthPercent: number, aspectRatio: number) {
+  return imageAspectHeightPercent(widthPercent, aspectRatio);
+}
+
+/** Recompute width when height is clamped at the page edge. */
+export function imageWidthForHeight(heightPercent: number, aspectRatio: number) {
+  return (heightPercent / PAGE_DISPLAY_ASPECT) * aspectRatio;
 }

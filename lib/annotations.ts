@@ -4,6 +4,7 @@ import {
   type TextStyle,
 } from "@/lib/text-styles";
 import { normalizeFontFamily } from "@/lib/google-fonts";
+import { PAGE_DISPLAY_ASPECT } from "@/lib/image-utils";
 
 export type TextAnnotation = {
   kind: "text";
@@ -36,6 +37,8 @@ export type ImageAnnotation = {
   y: number;
   width: number;
   height: number;
+  /** naturalWidth / naturalHeight — used to keep proportions correct */
+  aspectRatio: number;
   src: string;
 };
 
@@ -54,6 +57,15 @@ export type PlannerData = {
 
 const STORAGE_KEY = "road-dog-planner-data";
 
+function inferImageAspectRatio(raw: Record<string, unknown>) {
+  const width = Number(raw.width ?? 25);
+  const height = Number(raw.height ?? 20);
+  if (width > 0 && height > 0) {
+    return (width / height) * PAGE_DISPLAY_ASPECT;
+  }
+  return 1;
+}
+
 function normalizeAnnotation(raw: Record<string, unknown>): PlannerAnnotation | null {
   if (raw.kind === "image" && typeof raw.src === "string") {
     return {
@@ -64,6 +76,7 @@ function normalizeAnnotation(raw: Record<string, unknown>): PlannerAnnotation | 
       y: Number(raw.y),
       width: Number(raw.width ?? 25),
       height: Number(raw.height ?? 20),
+      aspectRatio: Number(raw.aspectRatio) || inferImageAspectRatio(raw),
       src: raw.src,
     };
   }
@@ -175,6 +188,7 @@ export function createImageAnnotation(
   src: string,
   width = 28,
   height = 20,
+  aspectRatio = (width / height) * PAGE_DISPLAY_ASPECT,
 ): ImageAnnotation {
   return {
     kind: "image",
@@ -184,6 +198,7 @@ export function createImageAnnotation(
     y,
     width,
     height,
+    aspectRatio,
     src,
   };
 }

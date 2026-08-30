@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { Check } from "lucide-react";
 import { parseCalendarDayFromUri, prepareCalendarCells } from "@/lib/calendar-cells";
 import type { CalendarDayCell, CalendarEvent } from "@/lib/calendar-types";
+import { imageHeightForWidth, imageWidthForHeight } from "@/lib/image-utils";
 import { CalendarOverlay } from "@/components/planner/calendar-overlay";
 
 type PdfPageProps = {
@@ -39,7 +40,7 @@ type PdfPageProps = {
   onSelectAnnotation: (id: string | null) => void;
   onToggleCheckbox: (id: string) => void;
   calendarEvents: CalendarEvent[];
-  pendingImage: { src: string; width: number; height: number } | null;
+  pendingImage: { src: string; width: number; height: number; aspectRatio: number } | null;
   onPendingImagePlaced: () => void;
 };
 
@@ -136,7 +137,7 @@ export function PdfPage({
     id: string;
     anchorX: number;
     anchorY: number;
-    aspect: number;
+    aspectRatio: number;
   } | null>(null);
 
   useEffect(() => {
@@ -317,6 +318,7 @@ export function PdfPage({
         pendingImage.src,
         pendingImage.width,
         pendingImage.height,
+        pendingImage.aspectRatio,
       );
       onAddAnnotation(image);
       onSelectAnnotation(image.id);
@@ -340,7 +342,7 @@ export function PdfPage({
       id: annotation.id,
       anchorX: annotation.x,
       anchorY: annotation.y,
-      aspect: annotation.width / annotation.height,
+      aspectRatio: annotation.aspectRatio,
     };
     onSelectAnnotation(annotation.id);
   };
@@ -374,17 +376,17 @@ export function PdfPage({
       const pointerY = ((event.clientY - rect.top) / rect.height) * 100;
 
       if (resizeState.current) {
-        const { id, anchorX, anchorY, aspect } = resizeState.current;
+        const { id, anchorX, anchorY, aspectRatio } = resizeState.current;
         let newWidth = Math.max(5, pointerX - anchorX);
-        let newHeight = newWidth / aspect;
+        let newHeight = imageHeightForWidth(newWidth, aspectRatio);
 
         if (anchorX + newWidth > 100) {
           newWidth = 100 - anchorX;
-          newHeight = newWidth / aspect;
+          newHeight = imageHeightForWidth(newWidth, aspectRatio);
         }
         if (anchorY + newHeight > 100) {
           newHeight = 100 - anchorY;
-          newWidth = newHeight * aspect;
+          newWidth = Math.max(5, imageWidthForHeight(newHeight, aspectRatio));
         }
 
         onUpdateAnnotation(id, {
@@ -455,10 +457,7 @@ export function PdfPage({
           return (
             <div
               key={annotation.id}
-              className={cn(
-                "absolute z-10",
-                isSelected && "ring-2 ring-primary/70",
-              )}
+              className={cn("absolute z-10", isSelected && "outline outline-2 outline-offset-0 outline-primary/60")}
               style={{
                 left: `${annotation.x}%`,
                 top: `${annotation.y}%`,
@@ -472,8 +471,18 @@ export function PdfPage({
               <img
                 src={annotation.src}
                 alt="Custom planner image"
-                className="pointer-events-none block h-full w-full"
+                className="pointer-events-none block h-full w-full object-contain"
                 draggable={false}
+                onLoad={(event) => {
+                  const img = event.currentTarget;
+                  const naturalAspect = img.naturalWidth / img.naturalHeight;
+                  if (Math.abs(annotation.aspectRatio - naturalAspect) > 0.01) {
+                    onUpdateAnnotation(annotation.id, {
+                      aspectRatio: naturalAspect,
+                      height: imageHeightForWidth(annotation.width, naturalAspect),
+                    });
+                  }
+                }}
               />
               {isSelected && (
                 <div

@@ -25,7 +25,7 @@ import {
   saveCalendarFeedUrl,
 } from "@/lib/calendar-storage";
 import { customTabLabel, isCustomPage } from "@/lib/custom-pages";
-import { compressImageFile, imageAspectHeightPercent } from "@/lib/image-utils";
+import { compressImageFile, imageAspectHeightPercent, imageHeightForWidth } from "@/lib/image-utils";
 import { createCloudSnapshot } from "@/lib/planner-cloud-types";
 import {
   fetchPlannerFromCloud,
@@ -80,6 +80,7 @@ export function PlannerViewer() {
     src: string;
     width: number;
     height: number;
+    aspectRatio: number;
   } | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
@@ -354,7 +355,7 @@ export function PlannerViewer() {
       });
       const width = 30;
       const height = imageAspectHeightPercent(width, aspect);
-      setPendingImage({ src, width, height });
+      setPendingImage({ src, width, height, aspectRatio: aspect });
       setTool("image");
     } catch (pickError) {
       window.alert(pickError instanceof Error ? pickError.message : "Could not add image.");
@@ -363,8 +364,7 @@ export function PlannerViewer() {
 
   const handleImageWidthChange = (width: number) => {
     if (!selectedImage) return;
-    const ratio = selectedImage.width / selectedImage.height;
-    const height = width / ratio;
+    const height = imageHeightForWidth(width, selectedImage.aspectRatio);
     handleUpdateAnnotation(selectedImage.id, { width, height });
   };
 
