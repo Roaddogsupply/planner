@@ -3,20 +3,24 @@ export type SectionIndexEntry = {
   page: number;
 };
 
+/** Shared geometry for section index lists (matches Finance / Self-Care tabs in the PDF). */
+export const INDEX_LIST_LAYOUT = {
+  x: 7.5,
+  width: 37.13,
+  rowHeight: 7.18,
+  /** Top edge of each row bar, as % of page height */
+  rowTops: [18.31, 27.03, 36.19, 45.26, 54.2, 63.13, 72, 80.94],
+  /** Mask over the list column — hides duplicated PDF text underneath */
+  mask: { x: 6, y: 16.5, width: 41, height: 69 },
+};
+
 export type SectionIndexConfig = {
   pageNumber: number;
   title: string;
   sections: SectionIndexEntry[];
-  /** Region covering the duplicated PDF list (percent of page). */
-  overlay: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  };
 };
 
-/** Section index pages where the PDF list text is duplicated / misaligned. */
+/** Index pages where the PDF text is duplicated — we redraw the list to match other tabs. */
 export const SECTION_INDEX_PAGES: SectionIndexConfig[] = [
   {
     pageNumber: 27,
@@ -31,7 +35,6 @@ export const SECTION_INDEX_PAGES: SectionIndexConfig[] = [
       { label: "Lesson Planning", page: 34 },
       { label: "Reading List", page: 35 },
     ],
-    overlay: { x: 6.5, y: 13, width: 40, height: 76 },
   },
 ];
 
@@ -45,18 +48,17 @@ export function isSectionIndexOverlayLink(pageNumber: number, link: {
   width: number;
   height: number;
 }) {
-  const config = getSectionIndex(pageNumber);
-  if (!config) return false;
+  if (!getSectionIndex(pageNumber)) return false;
 
-  const { overlay } = config;
+  const { mask } = INDEX_LIST_LAYOUT;
   const linkCenterX = link.x + link.width / 2;
   const linkCenterY = link.y + link.height / 2;
 
   return (
     link.width > 8 &&
-    linkCenterX >= overlay.x &&
-    linkCenterX <= overlay.x + overlay.width &&
-    linkCenterY >= overlay.y &&
-    linkCenterY <= overlay.y + overlay.height
+    linkCenterX >= mask.x &&
+    linkCenterX <= mask.x + mask.width &&
+    linkCenterY >= mask.y &&
+    linkCenterY <= mask.y + mask.height
   );
 }
