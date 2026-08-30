@@ -30,11 +30,12 @@ import {
   isCalendarSidebarTab,
   getCalendarSidebarTabIndex,
   isCalendarIndexReady,
+  isCalendarPlannerSpread,
   calendarDateContext,
   needsCalendarSidebarOverride,
   parseDateFromCalendarUri,
   resolveCalendarDayPage,
-  resolveCalendarSidebarNavigation,
+  resolveCalendarSidebarNavigationWithLinks,
   resolveWeekRowY,
   type CalendarPageIndex,
 } from "@/lib/calendar-pages";
@@ -93,18 +94,22 @@ function expandLink(link: LinkOverlay, padding = 0.5): LinkOverlay {
   };
 }
 
-function hitTestLink(x: number, y: number, links: LinkOverlay[]) {
-  for (const link of links) {
-    if (
+function hitTestLink(x: number, y: number, links: LinkOverlay[], pageNumber: number) {
+  const hits = links.filter(
+    (link) =>
       x >= link.x &&
       x <= link.x + link.width &&
       y >= link.y &&
-      y <= link.y + link.height
-    ) {
-      return link;
-    }
+      y <= link.y + link.height,
+  );
+  if (hits.length === 0) return null;
+
+  if (isCalendarPlannerSpread(pageNumber)) {
+    const sidebar = hits.find((link) => isCalendarSidebarTab(link));
+    if (sidebar) return sidebar;
   }
-  return null;
+
+  return hits[0];
 }
 
 function hitTestImage(x: number, y: number, items: ImageAnnotation[]) {
@@ -357,42 +362,34 @@ export function PdfPage({
     if (now - lastLinkNavAtRef.current < 400) return;
     lastLinkNavAtRef.current = now;
 
-    if (link.page) {
-      if (
-        needsCalendarSidebarOverride(pageNumber, calendarPageIndex) &&
-        isCalendarSidebarTab(link)
-      ) {
-        const tabIndex = getCalendarSidebarTabIndex(link);
+    if (isCalendarSidebarTab(link) && needsCalendarSidebarOverride(pageNumber, calendarPageIndex)) {
+      const tabIndex = getCalendarSidebarTabIndex(link);
+      const dateContext =
+        calendarDateContext(pageNumber, activeCalendarDate, calendarPageIndex) ??
+        activeCalendarDate;
 
-        if (isCalendarIndexReady(calendarPageIndex)) {
-          const dateContext = calendarDateContext(
-            pageNumber,
-            activeCalendarDate,
-            calendarPageIndex,
-          );
-          const overridePage = resolveCalendarSidebarNavigation(
-            tabIndex,
-            pageNumber,
-            dateContext,
-            calendarPageIndex,
-          );
-          if (overridePage) {
-            onPageNavigate(overridePage, undefined, dateContext ?? undefined);
-            return;
-          }
-        }
-
-        // Never follow the PDF's broken YEAR-tab links (they jump to random daily pages).
-        if (tabIndex === 0) {
-          if (!isCalendarIndexReady(calendarPageIndex)) {
-            window.alert(
-              "The calendar is still loading. Wait a few seconds and try again.",
-            );
-          }
-          return;
-        }
+      const overridePage = resolveCalendarSidebarNavigationWithLinks(
+        tabIndex,
+        pageNumber,
+        dateContext,
+        calendarPageIndex,
+        links,
+      );
+      if (overridePage) {
+        onPageNavigate(overridePage, undefined, dateContext ?? undefined);
+        return;
       }
 
+      // Never follow the PDF's broken sidebar tab links.
+      if (tabIndex === 0) {
+        if (!isCalendarIndexReady(calendarPageIndex)) {
+          window.alert("The calendar is still loading. Wait a few seconds and try again.");
+        }
+      }
+      return;
+    }
+
+    if (link.page) {
       onPageNavigate(link.page);
       return;
     }
@@ -428,7 +425,7 @@ export function PdfPage({
     if (!containerRef.current) return;
 
     const point = getPointerPercent(event);
-    const link = hitTestLink(point.x, point.y, links);
+    const link = hitTestLink(point.x, point.y, links, pageNumber);
     if (link) {
       handleLinkClick(link);
       return;

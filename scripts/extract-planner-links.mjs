@@ -51,6 +51,19 @@ function getLinkUrl(annotation) {
   return annotation.url || annotation.unsafeUrl || null;
 }
 
+/** Left sidebar month tabs on daily / week / month spreads. */
+function isCalendarSidebarTab(link) {
+  return link.x < 6 && link.width < 5 && link.y >= 6 && link.y <= 90;
+}
+
+function isCalendarPlannerSpread(pageNumber) {
+  return (
+    pageNumber >= 231 ||
+    (pageNumber >= 200 && pageNumber <= 230) ||
+    (pageNumber >= 129 && pageNumber <= 140)
+  );
+}
+
 const buffer = readFileSync(pdfPath);
 const pdf = await getDocument({ data: new Uint8Array(buffer), useWorkerFetch: false }).promise;
 
@@ -93,7 +106,14 @@ for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
       const ref = dest?.[0];
       if (ref) {
         const targetPage = (await pdf.getPageIndex(ref)) + 1;
-        pageLinks.push(expandLink({ ...base, page: targetPage }));
+        const expanded = expandLink({ ...base, page: targetPage });
+        // Sidebar tabs on calendar spreads have broken PDF destinations — strip them.
+        if (isCalendarPlannerSpread(pageNumber) && isCalendarSidebarTab(expanded)) {
+          const { page: _broken, ...sidebarTab } = expanded;
+          pageLinks.push(sidebarTab);
+        } else {
+          pageLinks.push(expanded);
+        }
       }
     }
   }

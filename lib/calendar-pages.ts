@@ -161,6 +161,28 @@ export function isCalendarSidebarTab(link: { x: number; y: number; width: number
   return link.x < 6 && link.width < 5 && link.y >= 6 && link.y <= 90;
 }
 
+/** Daily / week / month spreads that use the left YEAR + month tab column. */
+export function isCalendarPlannerSpread(pageNumber: number) {
+  return (
+    pageNumber >= 231 ||
+    (pageNumber >= 200 && pageNumber <= 230) ||
+    isMonthlyPlannerPage(pageNumber)
+  );
+}
+
+/** Week spread linked from the daily sidebar (authoritative in the PDF). */
+export function embeddedDailyWeekPage(
+  links: Array<{ x: number; y: number; width: number; page?: number }>,
+) {
+  for (const link of links) {
+    if (!link.page) continue;
+    if (link.x >= 4 && link.x <= 9 && link.y >= 14 && link.y <= 22 && link.width >= 8) {
+      return link.page;
+    }
+  }
+  return null;
+}
+
 export function getCalendarSidebarTabIndex(link: { y: number }) {
   let bestIndex = 0;
   let bestDistance = Infinity;
@@ -182,13 +204,58 @@ export function isCalendarIndexReady(index: CalendarPageIndex) {
 
 export function needsCalendarSidebarOverride(pageNumber: number, index: CalendarPageIndex) {
   return (
+    isCalendarPlannerSpread(pageNumber) ||
     index.dailyPlannerPages.includes(pageNumber) ||
     index.weekPlannerPages.includes(pageNumber) ||
     index.monthlyPlannerPages.includes(pageNumber)
   );
 }
 
-/** Fix sidebar tabs that point at random daily pages in the PDF. */
+/** Resolve sidebar tab clicks without following the PDF's broken dest pages. */
+export function resolveCalendarSidebarNavigationWithLinks(
+  tabIndex: number,
+  currentPage: number,
+  activeDate: string | null,
+  index: CalendarPageIndex,
+  pageLinks: Array<{ x: number; y: number; width: number; page?: number }>,
+): number | null {
+  if (!isCalendarPlannerSpread(currentPage)) {
+    return null;
+  }
+
+  const dateContext = calendarDateContext(currentPage, activeDate, index) ?? activeDate;
+
+  if (tabIndex === 0) {
+    if (currentPage >= 231) {
+      const embeddedWeek = embeddedDailyWeekPage(pageLinks);
+      if (embeddedWeek) return embeddedWeek;
+
+      if (dateContext && isCalendarIndexReady(index)) {
+        return resolveWeekPage(dateContext, index);
+      }
+    }
+
+    if (currentPage >= 200 && currentPage <= 230) {
+      if (!dateContext) {
+        return index.yearPageMap["2026"] ?? YEAR_OVERVIEW_PAGES[0];
+      }
+      return resolveMonthPage(dateContext);
+    }
+
+    if (isMonthlyPlannerPage(currentPage)) {
+      const year = dateContext?.slice(0, 4) ?? "2026";
+      return index.yearPageMap[year] ?? YEAR_OVERVIEW_PAGES[0];
+    }
+  }
+
+  if (tabIndex >= 1 && tabIndex <= 12) {
+    return MONTHLY_TAB_PAGES[tabIndex - 1];
+  }
+
+  return null;
+}
+
+/** @deprecated Use resolveCalendarSidebarNavigationWithLinks */
 export function resolveCalendarSidebarNavigation(
   tabIndex: number,
   currentPage: number,
