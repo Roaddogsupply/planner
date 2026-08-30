@@ -243,23 +243,23 @@
 .section-index-add-btn {
   pointer-events: auto;
   z-index: 20;
-  border: 1.5px solid var(--planner-accent);
+  border: 1px solid;
   border-radius: 9999px;
-  background: oklch(0.99 0.005 90 / 92%);
-  color: var(--planner-accent);
   cursor: pointer;
-  box-shadow: 0 1px 4px oklch(0 0 0 / 12%);
+  box-shadow: 0 1px 3px oklch(0 0 0 / 10%);
   transition: background-color 120ms ease, transform 120ms ease;
 }
 
 .section-index-add-btn:hover {
-  background: var(--planner-accent);
-  color: oklch(0.99 0 0);
-  transform: scale(1.05);
+  transform: scale(1.06);
 }
 
 .section-index-add-btn-inline {
-  border-width: 1px;
+  border-radius: 0;
+  border-top: none;
+  border-bottom: none;
+  border-right: none;
+  box-shadow: none;
   min-width: 0;
 }
 

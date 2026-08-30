@@ -26,8 +26,15 @@ export const INDEX_LIST_LAYOUT = {
   rowTops: [18.31, 27.03, 36.19, 45.26, 54.2, 63.13, 72, 80.94],
   /** Mask over the list column — hides duplicated PDF text underneath */
   mask: { x: 6, y: 16.5, width: 41, height: 69 },
-  /** Where the "+" add-copy button sits on each row */
-  addButton: { x: 45.5, width: 4.2, height: 5.5 },
+  /** "+" button size — horizontal position is derived from the bar's right edge */
+  addButton: { width: 3.6, height: 5.0, topOffset: 0.35 },
+};
+
+export type SectionBarLayout = { x: number; width: number };
+export type SectionAddButtonLayout = {
+  width: number;
+  height: number;
+  topOffset?: number;
 };
 
 export type SectionIndexConfig = {
@@ -36,9 +43,34 @@ export type SectionIndexConfig = {
   /** full = redraw bars (Education). addons = keep PDF bars, only show "+" buttons */
   variant: "full" | "addons";
   sections: SectionIndexEntry[];
-  /** Override default "+" button size/placement (e.g. Personal Growth has tighter rows). */
-  addButton?: { x: number; width: number; height: number; topOffset?: number };
+  /** PDF bar column — used to anchor "+" on the right edge of each colored row */
+  bar?: SectionBarLayout;
+  /** Override "+" size/placement tweaks (e.g. Personal Growth has tighter rows). */
+  addButton?: SectionAddButtonLayout;
 };
+
+export function sectionBarColor(index: number) {
+  return INDEX_BAR_COLORS[index % INDEX_BAR_COLORS.length] ?? INDEX_BAR_COLORS[0];
+}
+
+/** Place "+" on the right end of the colored link bar, not over the binder rings. */
+export function resolveAddButtonPlacement(
+  config: SectionIndexConfig,
+  section: SectionIndexEntry,
+  index: number,
+) {
+  const bar = config.bar ?? { x: INDEX_LIST_LAYOUT.x, width: INDEX_LIST_LAYOUT.width };
+  const btn = config.addButton ?? INDEX_LIST_LAYOUT.addButton;
+  const barColor = sectionBarColor(index);
+
+  return {
+    left: bar.x + bar.width - btn.width,
+    top: section.rowTop + (btn.topOffset ?? 0.35),
+    width: btn.width,
+    height: btn.height,
+    barColor,
+  };
+}
 
 /** Index pages for tab dashboards — left-side colored section links. */
 export const SECTION_INDEX_PAGES: SectionIndexConfig[] = [
@@ -46,7 +78,8 @@ export const SECTION_INDEX_PAGES: SectionIndexConfig[] = [
     pageNumber: 2,
     title: "Personal Growth",
     variant: "addons",
-    addButton: { x: 45.5, width: 3.4, height: 3.6, topOffset: 0.15 },
+    bar: { x: 7.56, width: 36.4 },
+    addButton: { width: 3.1, height: 3.0, topOffset: 0.12 },
     sections: [
       { label: "Goal Setter", page: 3, rowTop: 18.1 },
       { label: "Know Yourself Journal", page: 4, rowTop: 22.9 },
