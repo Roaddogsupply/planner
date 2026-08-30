@@ -41,6 +41,7 @@ import {
 import { SectionIndexOverlay } from "@/components/planner/section-index-overlay";
 import { getSectionIndex, isSectionIndexOverlayLink, type SectionIndexEntry } from "@/lib/section-indexes";
 import { DEFAULT_INSTANCE_ID } from "@/lib/section-instances";
+import { enqueuePdfTask } from "@/lib/pdf-task-queue";
 
 type PdfPageProps = {
   pdf: PDFDocumentProxy;
@@ -115,6 +116,27 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Pro
   ]);
 }
 
+async function loadPageAnnotations(page: {
+  getAnnotations: () => Promise<
+    Array<{
+      subtype?: string;
+      rect?: number[];
+      dest?: unknown;
+      url?: string;
+      unsafeUrl?: string;
+    }>
+  >;
+}) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const result = await enqueuePdfTask(() =>
+      withTimeout(page.getAnnotations(), 45_000, []),
+    );
+    if (result.length > 0 || attempt === 3) return result;
+    await new Promise((resolve) => window.setTimeout(resolve, 1500 * (attempt + 1)));
+  }
+  return [];
+}
+
 function hitTestImage(x: number, y: number, items: ImageAnnotation[]) {
   for (const item of [...items].reverse()) {
     if (
@@ -171,6 +193,7 @@ export function PdfPage({
     "default",
   );
   const [loading, setLoading] = useState(true);
+  const [linksLoading, setLinksLoading] = useState(false);
   const drawGenerationRef = useRef(0);
   const calendarPageIndexRef = useRef(calendarPageIndex);
   calendarPageIndexRef.current = calendarPageIndex;
@@ -189,6 +212,7 @@ export function PdfPage({
 
     async function drawPage() {
       setLoading(true);
+      setLinksLoading(true);
       setCalendarLayout("default");
       setLinks([]);
 
@@ -227,7 +251,7 @@ export function PdfPage({
         const isDailySpread =
           pageText.includes("Breakfast") && pageText.includes("Snacks");
 
-        const rawAnnotations = await withTimeout(page.getAnnotations(), 20_000, []);
+        const rawAnnotations = await loadPageAnnotations(page);
         if (cancelled || generation !== drawGenerationRef.current) return;
 
         for (const annotation of rawAnnotations) {
@@ -263,7 +287,7 @@ export function PdfPage({
                 ? await pdf.getDestination(annotation.dest)
                 : annotation.dest;
             if (dest) {
-              const ref = dest[0];
+              const ref = (dest as unknown[])[0] as Parameters<PDFDocumentProxy["getPageIndex"]>[0];
               if (ref) {
                 const targetPage = (await pdf.getPageIndex(ref)) + 1;
                 pageLinks.push(expandLink({ ...base, page: targetPage }));
@@ -300,13 +324,16 @@ export function PdfPage({
           prepareCalendarCells(dayCells, compactCalendar, pageNumber, compactVariant),
         );
         setCalendarLayout(compactCalendar ? compactVariant : "default");
+        setLinksLoading(false);
       } catch (renderError) {
         if (!cancelled && generation === drawGenerationRef.current) {
           console.error(renderError);
+          setLinksLoading(false);
         }
       } finally {
         if (generation === drawGenerationRef.current) {
           setLoading(false);
+          setLinksLoading(false);
         }
       }
     }
@@ -453,7 +480,8 @@ export function PdfPage({
     return true;
   };
 
-  const handleBrowseOverlayClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+  const handleBrowseClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (tool !== "navigate" || links.length === 0) return;
     if (handleBrowsePointer(event.clientX, event.clientY)) {
       event.preventDefault();
       event.stopPropagation();
@@ -656,6 +684,11 @@ export function PdfPage({
 
   return (
     <div className="relative mx-auto w-full" style={{ maxWidth: pageSize.width }}>
+      {browseMode && linksLoading && !loading && (
+        <p className="text-muted-foreground mb-2 text-center text-xs">
+          Loading clickable links…
+        </p>
+      )}
       <div
         ref={containerRef}
         className={cn(
@@ -670,17 +703,10 @@ export function PdfPage({
           loading && "opacity-70",
         )}
         style={{ aspectRatio: `${pageSize.width} / ${pageSize.height}`, touchAction: "manipulation" }}
+        onClickCapture={handleBrowseClickCapture}
         onClick={handlePageClick}
       >
         <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full" />
-
-        {browseMode && !loading && (
-          <div
-            className="absolute inset-0 z-[8] cursor-pointer"
-            aria-hidden="true"
-            onClick={handleBrowseOverlayClick}
-          />
-        )}
 
         {weekFocusY != null && (
           <div

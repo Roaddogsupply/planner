@@ -1,6 +1,7 @@
 "use client";
 
 import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { enqueuePdfTask, preferMainThreadPdf } from "@/lib/pdf-task-queue";
 
 export const PDF_URL = "/planner.pdf";
 
@@ -69,8 +70,11 @@ async function openPdfBytes(
 
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
 
-  // Same-origin worker avoids CDN/CORS hangs in preview environments.
-  pdfjs.GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.min.mjs`;
+  if (preferMainThreadPdf()) {
+    pdfjs.GlobalWorkerOptions.workerSrc = "";
+  } else {
+    pdfjs.GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.min.mjs`;
+  }
 
   onProgress?.({ phase: "opening", percent: 50 });
 

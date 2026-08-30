@@ -283,13 +283,17 @@ export function PlannerViewer() {
 
     let cancelled = false;
 
-    void buildCalendarPageIndex(pdf).then((index) => {
-      if (cancelled) return;
-      setCalendarPageIndex(index);
-    });
+    // Let the visible page load its clickable links before scanning all 597 pages.
+    const timer = window.setTimeout(() => {
+      void buildCalendarPageIndex(pdf).then((index) => {
+        if (cancelled) return;
+        setCalendarPageIndex(index);
+      });
+    }, 12_000);
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
   }, [pdf]);
 
