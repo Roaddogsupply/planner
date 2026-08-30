@@ -110,6 +110,21 @@ export const SECTION_INDEX_PAGES: SectionIndexConfig[] = [
     ],
   },
   {
+    pageNumber: 79,
+    title: "Work",
+    variant: "addons",
+    sections: [
+      { label: "Daily Work", page: 80, rowTop: 18.6 },
+      { label: "Work Planner", page: 81, rowTop: 27.5 },
+      { label: "Project Planner", page: 82, rowTop: 36.6 },
+      { label: "Inbox Tracker", page: 83, rowTop: 45.5 },
+      { label: "Meeting Notes", page: 84, rowTop: 54.4 },
+      { label: "Task List", page: 85, rowTop: 63.2 },
+      { label: "Brainstorming", page: 86, rowTop: 72.2 },
+      { label: "Contacts", page: 87, rowTop: 81.2 },
+    ],
+  },
+  {
     pageNumber: 18,
     title: "Self-care",
     variant: "addons",
