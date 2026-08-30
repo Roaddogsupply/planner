@@ -227,7 +227,7 @@ export function PdfPage({
             (link) => !isSectionIndexOverlayLink(pageNumber, link),
           );
           setLinks(filteredLinks);
-          setCalendarCells(prepareCalendarCells(dayCells, compactCalendar));
+          setCalendarCells(prepareCalendarCells(dayCells, compactCalendar, pageNumber));
         }
       } catch (renderError) {
         if (!cancelled) {
