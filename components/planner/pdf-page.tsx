@@ -85,7 +85,6 @@ type LinkOverlay = {
 /** Landscape planner spread — every PDF page uses this size at scale 1. */
 const PDF_PAGE_WIDTH = 816;
 const PDF_PAGE_HEIGHT = 595;
-const PDF_ASPECT_PERCENT = (PDF_PAGE_HEIGHT / PDF_PAGE_WIDTH) * 100;
 
 function toPercent(value: number, total: number) {
   return (value / total) * 100;
@@ -627,26 +626,24 @@ export function PdfPage({
   const browseMode = tool === "navigate";
 
   return (
-    <div className="relative mx-auto w-full" style={{ maxWidth: pageSize.width }}>
+    <div className="relative mx-auto w-fit max-w-full">
       <div
-        className={cn("planner-page relative w-full", loading && "opacity-70")}
-        style={{ paddingBottom: `${PDF_ASPECT_PERCENT}%`, touchAction: "manipulation" }}
+        ref={containerRef}
+        className={cn(
+          "planner-page relative select-none",
+          tool === "text"
+            ? "cursor-text"
+            : tool === "image"
+              ? "cursor-copy"
+              : tool === "checkbox"
+                ? "cursor-crosshair"
+                : "cursor-pointer",
+          loading && "opacity-70",
+        )}
+        style={{ touchAction: "manipulation" }}
+        onClick={handlePageClick}
       >
-        <div
-          ref={containerRef}
-          className={cn(
-            "absolute inset-0 select-none",
-            tool === "text"
-              ? "cursor-text"
-              : tool === "image"
-                ? "cursor-copy"
-                : tool === "checkbox"
-                  ? "cursor-crosshair"
-                  : "cursor-pointer",
-          )}
-          onClick={handlePageClick}
-        >
-          <canvas ref={canvasRef} className="absolute inset-0 block h-full w-full" />
+        <canvas ref={canvasRef} className="block max-w-full" />
 
         {weekFocusY != null && (
           <div
@@ -800,7 +797,6 @@ export function PdfPage({
             </div>
           );
         })}
-        </div>
       </div>
     </div>
   );
