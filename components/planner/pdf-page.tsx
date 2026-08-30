@@ -29,6 +29,7 @@ import {
   isCompactCalendarPage,
   isCalendarSidebarTab,
   getCalendarSidebarTabIndex,
+  isCalendarIndexReady,
   needsCalendarSidebarOverride,
   parseDateFromCalendarUri,
   resolveCalendarDayPage,
@@ -191,9 +192,8 @@ export function PdfPage({
 
         const pageLinks: LinkOverlay[] = [];
         const dayCells: CalendarDayCell[] = [];
-        const isDailyMiniCal = calendarPageIndex.dailyPlannerPages.includes(pageNumber);
-        const compactCalendar = isCompactCalendarPage(pageNumber) || isDailyMiniCal;
-        const compactVariant = isDailyMiniCal ? "daily" : "overview";
+        let fromDateLinkCount = 0;
+        const compactCalendarPage = isCompactCalendarPage(pageNumber);
         for (const annotation of await page.getAnnotations()) {
           if (annotation.subtype !== "Link") continue;
 
@@ -215,9 +215,10 @@ export function PdfPage({
           const linkUrl = getAnnotationLinkUrl(annotation);
 
           if (linkUrl) {
-            const calendarDay = parseCalendarDayFromUri(linkUrl, base, compactCalendar);
+            const calendarDay = parseCalendarDayFromUri(linkUrl, base, compactCalendarPage);
             if (calendarDay) {
               dayCells.push(calendarDay);
+              fromDateLinkCount++;
             }
             pageLinks.push(expandLink({ ...base, uri: linkUrl }));
           } else if (annotation.dest) {
@@ -239,6 +240,16 @@ export function PdfPage({
           const filteredLinks = pageLinks.filter(
             (link) => !isSectionIndexOverlayLink(pageNumber, link),
           );
+          const hasDailyMiniCalGrid = dayCells.some(
+            (cell) => cell.x >= 25 && cell.x <= 50 && cell.y >= 18 && cell.y <= 32,
+          );
+          const isDailyMiniCal =
+            calendarPageIndex.dailyPlannerPages.includes(pageNumber) ||
+            (fromDateLinkCount >= 35 &&
+              fromDateLinkCount <= 55 &&
+              hasDailyMiniCalGrid);
+          const compactCalendar = compactCalendarPage || isDailyMiniCal;
+          const compactVariant = isDailyMiniCal ? "daily" : "overview";
           setLinks(filteredLinks);
           setCalendarCells(
             prepareCalendarCells(dayCells, compactCalendar, pageNumber, compactVariant),
@@ -278,14 +289,27 @@ export function PdfPage({
         isCalendarSidebarTab(link)
       ) {
         const tabIndex = getCalendarSidebarTabIndex(link);
-        const overridePage = resolveCalendarSidebarNavigation(
-          tabIndex,
-          pageNumber,
-          activeCalendarDate,
-          calendarPageIndex,
-        );
-        if (overridePage) {
-          onPageNavigate(overridePage);
+
+        if (isCalendarIndexReady(calendarPageIndex)) {
+          const overridePage = resolveCalendarSidebarNavigation(
+            tabIndex,
+            pageNumber,
+            activeCalendarDate,
+            calendarPageIndex,
+          );
+          if (overridePage) {
+            onPageNavigate(overridePage, undefined, activeCalendarDate ?? undefined);
+            return;
+          }
+        }
+
+        // Never follow the PDF's broken YEAR-tab links (they jump to random daily pages).
+        if (tabIndex === 0) {
+          if (!isCalendarIndexReady(calendarPageIndex)) {
+            window.alert(
+              "The calendar is still loading. Wait a few seconds and try again.",
+            );
+          }
           return;
         }
       }
@@ -303,12 +327,19 @@ export function PdfPage({
             onPageNavigate(targetPage, undefined, date);
             return;
           }
-        }
 
-        window.alert(
-          "Could not find that day in the planner. Try using the month tabs to navigate.",
-        );
-        return;
+          if (!isCalendarIndexReady(calendarPageIndex)) {
+            window.alert(
+              "The calendar is still loading. Wait a few seconds and try again.",
+            );
+            return;
+          }
+
+          window.alert(
+            "Could not find that day in the planner. Try using the month tabs to navigate.",
+          );
+          return;
+        }
       }
       window.open(link.uri, "_blank", "noopener,noreferrer");
     }
@@ -503,6 +534,12 @@ export function PdfPage({
   const pageImages = pageAnnotations.filter(isImageAnnotation);
   const pageOthers = pageAnnotations.filter((item) => !isImageAnnotation(item));
   const sectionIndex = getSectionIndex(pageNumber);
+  const hasDailyMiniCalGrid = calendarCells.some(
+    (cell) => cell.x >= 25 && cell.x <= 50 && cell.y >= 18 && cell.y <= 32,
+  );
+  const isDailyMiniCal =
+    calendarPageIndex.dailyPlannerPages.includes(pageNumber) || hasDailyMiniCalGrid;
+  const compactCalendar = isCompactCalendarPage(pageNumber) || isDailyMiniCal;
 
   return (
     <div className="relative mx-auto w-full" style={{ maxWidth: pageSize.width }}>
@@ -521,12 +558,8 @@ export function PdfPage({
         <CalendarOverlay
           cells={calendarCells}
           events={calendarEvents}
-          compact={isCompactCalendarPage(pageNumber) || calendarPageIndex.dailyPlannerPages.includes(pageNumber)}
-          compactStyle={calendarPageIndex.dailyPlannerPages.includes(pageNumber) ? "dot" : "box"}
-          onDateNavigate={(date) => {
-            const targetPage = resolveCalendarDayPage(date, calendarPageIndex.datePageMap);
-            if (targetPage) onPageNavigate(targetPage, undefined, date);
-          }}
+          compact={compactCalendar}
+          compactStyle={isDailyMiniCal ? "dot" : "box"}
         />
 
         {sectionIndex && (

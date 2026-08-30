@@ -8,7 +8,6 @@ type CalendarOverlayProps = {
   compact?: boolean;
   /** Overview/quarterly tint the whole date box; daily mini-cals use a dot. */
   compactStyle?: "box" | "dot";
-  onDateNavigate?: (date: string) => void;
 };
 
 function uniqueCellsByDate(cells: CalendarDayCell[]) {
@@ -24,7 +23,6 @@ export function CalendarOverlay({
   events,
   compact = false,
   compactStyle = "box",
-  onDateNavigate,
 }: CalendarOverlayProps) {
   if (!cells.length || !events.length) return null;
 
@@ -39,30 +37,24 @@ export function CalendarOverlay({
 
           if (compactStyle === "dot") {
             return (
-              <button
+              <div
                 key={cell.date}
-                type="button"
-                className="calendar-event-dot pointer-events-auto absolute"
+                className="calendar-event-dot absolute"
                 style={{
                   left: `${cell.x + cell.width / 2}%`,
                   top: `${cell.y + cell.height / 2}%`,
                   transform: "translate(-50%, -50%)",
                 }}
                 title={`${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"} — ${titles}`}
-                aria-label={`${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"} on ${cell.date}. Open day page.`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onDateNavigate?.(cell.date);
-                }}
+                aria-hidden="true"
               />
             );
           }
 
           return (
-            <button
+            <div
               key={cell.date}
-              type="button"
-              className="calendar-event-day-highlight pointer-events-auto absolute"
+              className="calendar-event-day-highlight absolute"
               style={{
                 left: `${cell.x}%`,
                 top: `${cell.y}%`,
@@ -70,11 +62,7 @@ export function CalendarOverlay({
                 height: `${cell.height}%`,
               }}
               title={`${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"} — ${titles}`}
-              aria-label={`${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"} on ${cell.date}. Open day page.`}
-              onClick={(event) => {
-                event.stopPropagation();
-                onDateNavigate?.(cell.date);
-              }}
+              aria-hidden="true"
             />
           );
         })}

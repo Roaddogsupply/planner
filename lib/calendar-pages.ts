@@ -128,14 +128,19 @@ export function getCalendarSidebarTabIndex(link: { y: number }) {
   return bestIndex;
 }
 
+export function isCalendarIndexReady(index: CalendarPageIndex) {
+  return index.dailyPlannerPages.length > 0 && Object.keys(index.datePageMap).length > 0;
+}
+
 export function needsCalendarSidebarOverride(pageNumber: number, index: CalendarPageIndex) {
   return (
     index.dailyPlannerPages.includes(pageNumber) ||
-    index.weekPlannerPages.includes(pageNumber)
+    index.weekPlannerPages.includes(pageNumber) ||
+    index.monthlyPlannerPages.includes(pageNumber)
   );
 }
 
-/** Fix day/week sidebar tabs that point at random daily pages in the PDF. */
+/** Fix sidebar tabs that point at random daily pages in the PDF. */
 export function resolveCalendarSidebarNavigation(
   tabIndex: number,
   currentPage: number,
@@ -147,16 +152,23 @@ export function resolveCalendarSidebarNavigation(
   }
 
   if (tabIndex === 0) {
-    if (!activeDate) {
-      return index.yearPageMap["2026"] ?? YEAR_OVERVIEW_PAGES[0];
-    }
-
     if (index.dailyPlannerPages.includes(currentPage)) {
+      if (!activeDate) {
+        return index.yearPageMap["2026"] ?? YEAR_OVERVIEW_PAGES[0];
+      }
       return index.weekPageMap[activeDate] ?? null;
     }
 
     if (index.weekPlannerPages.includes(currentPage)) {
+      if (!activeDate) {
+        return index.yearPageMap["2026"] ?? YEAR_OVERVIEW_PAGES[0];
+      }
       return index.monthPageMap[activeDate.slice(0, 7)] ?? null;
+    }
+
+    if (index.monthlyPlannerPages.includes(currentPage)) {
+      const year = activeDate?.slice(0, 4) ?? "2026";
+      return index.yearPageMap[year] ?? YEAR_OVERVIEW_PAGES[0];
     }
   }
 
