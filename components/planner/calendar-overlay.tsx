@@ -4,8 +4,10 @@ import { eventsForDate } from "@/lib/calendar-storage";
 type CalendarOverlayProps = {
   cells: CalendarDayCell[];
   events: CalendarEvent[];
-  /** Year overview / quarterly pages tint date boxes purple; monthly pages show event titles. */
+  /** Purple highlights instead of event title labels. */
   compact?: boolean;
+  /** Overview/quarterly tint the whole date box; daily mini-cals use a dot. */
+  compactStyle?: "box" | "dot";
   onDateNavigate?: (date: string) => void;
 };
 
@@ -21,6 +23,7 @@ export function CalendarOverlay({
   cells,
   events,
   compact = false,
+  compactStyle = "box",
   onDateNavigate,
 }: CalendarOverlayProps) {
   if (!cells.length || !events.length) return null;
@@ -33,6 +36,27 @@ export function CalendarOverlay({
           if (!dayEvents.length) return null;
 
           const titles = dayEvents.map((event) => event.summary).join(", ");
+
+          if (compactStyle === "dot") {
+            return (
+              <button
+                key={cell.date}
+                type="button"
+                className="calendar-event-dot pointer-events-auto absolute"
+                style={{
+                  left: `${cell.x + cell.width / 2}%`,
+                  top: `${cell.y + cell.height / 2}%`,
+                  transform: "translate(-50%, -50%)",
+                }}
+                title={`${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"} — ${titles}`}
+                aria-label={`${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"} on ${cell.date}. Open day page.`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onDateNavigate?.(cell.date);
+                }}
+              />
+            );
+          }
 
           return (
             <button

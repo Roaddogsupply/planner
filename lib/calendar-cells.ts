@@ -110,7 +110,14 @@ export function parseCalendarDayFromUri(
 export function filterMainGridCells(
   cells: CalendarDayCell[],
   compact = false,
+  variant: "overview" | "daily" = "overview",
 ): CalendarDayCell[] {
+  if (compact && variant === "daily") {
+    return cells.filter(
+      (cell) => cell.x >= 25 && cell.x <= 50 && cell.y >= 18 && cell.y <= 32,
+    );
+  }
+
   if (compact) {
     return cells.filter(
       (cell) => cell.x >= 10 && cell.x <= 95 && cell.y >= 12 && cell.y <= 90,
@@ -173,8 +180,9 @@ export function prepareCalendarCells(
   cells: CalendarDayCell[],
   compact = false,
   pageNumber?: number,
+  variant: "overview" | "daily" = "overview",
 ): CalendarDayCell[] {
-  return dedupeCalendarCells(filterMainGridCells(cells, compact), {
+  return dedupeCalendarCells(filterMainGridCells(cells, compact, variant), {
     compact,
     pageNumber,
   });

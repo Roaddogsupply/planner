@@ -25,7 +25,7 @@ import { parseCalendarDayFromUri, prepareCalendarCells } from "@/lib/calendar-ce
 import type { CalendarDayCell, CalendarEvent } from "@/lib/calendar-types";
 import { imageHeightForWidth, imageWidthForHeight } from "@/lib/image-utils";
 import { CalendarOverlay } from "@/components/planner/calendar-overlay";
-import { isCompactCalendarPage, resolveCalendarDayPage } from "@/lib/calendar-pages";
+import { isCompactCalendarPage, parseDateFromCalendarUri, resolveCalendarDayPage } from "@/lib/calendar-pages";
 import { SectionIndexOverlay } from "@/components/planner/section-index-overlay";
 import { getSectionIndex, isSectionIndexOverlayLink, type SectionIndexEntry } from "@/lib/section-indexes";
 import { DEFAULT_INSTANCE_ID } from "@/lib/section-instances";
@@ -48,6 +48,7 @@ type PdfPageProps = {
   onToggleCheckbox: (id: string) => void;
   calendarEvents: CalendarEvent[];
   calendarDatePageMap: Record<string, number>;
+  dailyPlannerPages: number[];
   pendingImage: { src: string; width: number; height: number; aspectRatio: number } | null;
   onPendingImagePlaced: () => void;
 };
@@ -133,6 +134,7 @@ export function PdfPage({
   onToggleCheckbox,
   calendarEvents,
   calendarDatePageMap,
+  dailyPlannerPages,
   pendingImage,
   onPendingImagePlaced,
   activeInstanceId,
@@ -180,7 +182,9 @@ export function PdfPage({
 
         const pageLinks: LinkOverlay[] = [];
         const dayCells: CalendarDayCell[] = [];
-        const compactCalendar = isCompactCalendarPage(pageNumber);
+        const isDailyMiniCal = dailyPlannerPages.includes(pageNumber);
+        const compactCalendar = isCompactCalendarPage(pageNumber) || isDailyMiniCal;
+        const compactVariant = isDailyMiniCal ? "daily" : "overview";
         for (const annotation of await page.getAnnotations()) {
           if (annotation.subtype !== "Link") continue;
 
@@ -227,7 +231,9 @@ export function PdfPage({
             (link) => !isSectionIndexOverlayLink(pageNumber, link),
           );
           setLinks(filteredLinks);
-          setCalendarCells(prepareCalendarCells(dayCells, compactCalendar, pageNumber));
+          setCalendarCells(
+            prepareCalendarCells(dayCells, compactCalendar, pageNumber, compactVariant),
+          );
         }
       } catch (renderError) {
         if (!cancelled) {
@@ -246,7 +252,7 @@ export function PdfPage({
       cancelled = true;
       renderTask?.cancel();
     };
-  }, [pdf, pageNumber, scale]);
+  }, [pdf, pageNumber, scale, dailyPlannerPages]);
 
   const getPointerPercent = (event: ReactMouseEvent) => {
     const rect = containerRef.current!.getBoundingClientRect();
@@ -264,8 +270,17 @@ export function PdfPage({
 
     if (link.uri) {
       if (link.uri.startsWith("shortcuts://")) {
+        const date = parseDateFromCalendarUri(link.uri);
+        if (date) {
+          const targetPage = resolveCalendarDayPage(date, calendarDatePageMap);
+          if (targetPage) {
+            onPageNavigate(targetPage);
+            return;
+          }
+        }
+
         window.alert(
-          "Calendar shortcuts only work in the PDF on iPhone/iPad. On the web, open monthly pages from the index or tabs.",
+          "Could not find that day in the planner. Try using the month tabs to navigate.",
         );
         return;
       }
@@ -480,7 +495,8 @@ export function PdfPage({
         <CalendarOverlay
           cells={calendarCells}
           events={calendarEvents}
-          compact={isCompactCalendarPage(pageNumber)}
+          compact={isCompactCalendarPage(pageNumber) || dailyPlannerPages.includes(pageNumber)}
+          compactStyle={dailyPlannerPages.includes(pageNumber) ? "dot" : "box"}
           onDateNavigate={(date) => {
             const targetPage = resolveCalendarDayPage(date, calendarDatePageMap);
             if (targetPage) onPageNavigate(targetPage);

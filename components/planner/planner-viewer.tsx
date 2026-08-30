@@ -45,7 +45,7 @@ import {
 } from "@/lib/section-instances";
 import { getSectionForPage, isSectionTargetPage, type SectionIndexEntry } from "@/lib/section-indexes";
 import { SectionInstanceBar } from "@/components/planner/section-instance-bar";
-import { buildCalendarDatePageMap } from "@/lib/calendar-pages";
+import { buildCalendarPageIndex } from "@/lib/calendar-pages";
 
 function formatLoadingMessage(progress: LoadProgress | null) {
   if (!progress) return "Starting planner…";
@@ -92,6 +92,7 @@ export function PlannerViewer() {
   const [calendarLastSynced, setCalendarLastSynced] = useState<string | null>(null);
   const [calendarSyncError, setCalendarSyncError] = useState<string | null>(null);
   const [calendarDatePageMap, setCalendarDatePageMap] = useState<Record<string, number>>({});
+  const [dailyPlannerPages, setDailyPlannerPages] = useState<number[]>([]);
   const [pendingImage, setPendingImage] = useState<{
     src: string;
     width: number;
@@ -264,9 +265,10 @@ export function PlannerViewer() {
 
     let cancelled = false;
 
-    void buildCalendarDatePageMap(pdf).then((map) => {
+    void buildCalendarPageIndex(pdf).then((index) => {
       if (cancelled) return;
-      setCalendarDatePageMap(Object.fromEntries(map));
+      setCalendarDatePageMap(index.datePageMap);
+      setDailyPlannerPages(index.dailyPlannerPages);
     });
 
     return () => {
@@ -719,6 +721,7 @@ export function PlannerViewer() {
               onToggleCheckbox={handleToggleCheckbox}
               calendarEvents={calendarEvents}
               calendarDatePageMap={calendarDatePageMap}
+              dailyPlannerPages={dailyPlannerPages}
               pendingImage={pendingImage}
               onPendingImagePlaced={() => setPendingImage(null)}
             />
