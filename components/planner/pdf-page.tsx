@@ -180,6 +180,7 @@ export function PdfPage({
 
         const pageLinks: LinkOverlay[] = [];
         const dayCells: CalendarDayCell[] = [];
+        const compactCalendar = isYearOverviewPage(pageNumber);
         for (const annotation of await page.getAnnotations()) {
           if (annotation.subtype !== "Link") continue;
 
@@ -201,7 +202,7 @@ export function PdfPage({
           const linkUrl = getAnnotationLinkUrl(annotation);
 
           if (linkUrl) {
-            const calendarDay = parseCalendarDayFromUri(linkUrl, base);
+            const calendarDay = parseCalendarDayFromUri(linkUrl, base, compactCalendar);
             if (calendarDay) {
               dayCells.push(calendarDay);
             }
@@ -226,7 +227,7 @@ export function PdfPage({
             (link) => !isSectionIndexOverlayLink(pageNumber, link),
           );
           setLinks(filteredLinks);
-          setCalendarCells(prepareCalendarCells(dayCells));
+          setCalendarCells(prepareCalendarCells(dayCells, compactCalendar));
         }
       } catch (renderError) {
         if (!cancelled) {

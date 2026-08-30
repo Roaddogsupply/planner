@@ -7,10 +7,27 @@ type LinkOverlay = {
   height: number;
 };
 
-/** Expand the apple-icon anchor into a centered day cell box on the main grid. */
-export function expandCalendarDayCell(date: string, base: LinkOverlay): CalendarDayCell {
+/** Expand the day-number link into a cell box on the calendar grid. */
+export function expandCalendarDayCell(
+  date: string,
+  base: LinkOverlay,
+  compact = false,
+): CalendarDayCell {
   const iconCenterX = base.x + base.width / 2;
   const iconCenterY = base.y + base.height / 2;
+
+  if (compact) {
+    const width = 1.45;
+    const height = 1.65;
+    return {
+      date,
+      x: iconCenterX - width / 2,
+      y: iconCenterY - height / 2,
+      width,
+      height,
+    };
+  }
+
   const width = 7.2;
   const height = 9;
 
@@ -26,6 +43,7 @@ export function expandCalendarDayCell(date: string, base: LinkOverlay): Calendar
 export function parseCalendarDayFromUri(
   uri: string,
   base: LinkOverlay,
+  compact = false,
 ): CalendarDayCell | null {
   const match = uri.match(/FROMDATE=([^&%]+)/);
   if (!match) return null;
@@ -33,11 +51,20 @@ export function parseCalendarDayFromUri(
   const date = decodeURIComponent(match[1]).slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
 
-  return expandCalendarDayCell(date, base);
+  return expandCalendarDayCell(date, base, compact);
 }
 
 /** Drop sidebar / mini-calendar day links (e.g. Sep preview on the left of August). */
-export function filterMainGridCells(cells: CalendarDayCell[]): CalendarDayCell[] {
+export function filterMainGridCells(
+  cells: CalendarDayCell[],
+  compact = false,
+): CalendarDayCell[] {
+  if (compact) {
+    return cells.filter(
+      (cell) => cell.x >= 18 && cell.x <= 92 && cell.y >= 14 && cell.y <= 88,
+    );
+  }
+
   return cells.filter(
     (cell) => cell.x >= 20 && cell.x <= 88 && cell.y >= 14 && cell.y <= 86,
   );
@@ -71,6 +98,9 @@ export function dedupeCalendarCells(cells: CalendarDayCell[]): CalendarDayCell[]
   return [...byDate.values()];
 }
 
-export function prepareCalendarCells(cells: CalendarDayCell[]): CalendarDayCell[] {
-  return dedupeCalendarCells(filterMainGridCells(cells));
+export function prepareCalendarCells(
+  cells: CalendarDayCell[],
+  compact = false,
+): CalendarDayCell[] {
+  return dedupeCalendarCells(filterMainGridCells(cells, compact));
 }
