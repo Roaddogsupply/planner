@@ -3,8 +3,22 @@ import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
 /** Whole-year overview spreads — event titles are too cramped here. */
 export const YEAR_OVERVIEW_PAGES = [121, 122] as const;
 
+/** Three-month quarterly spreads — same compact purple date boxes. */
+export const QUARTERLY_PLANNER_PAGES = [124, 125, 126, 127] as const;
+
 export function isYearOverviewPage(pageNumber: number) {
   return YEAR_OVERVIEW_PAGES.includes(pageNumber as (typeof YEAR_OVERVIEW_PAGES)[number]);
+}
+
+export function isQuarterlyPlannerPage(pageNumber: number) {
+  return QUARTERLY_PLANNER_PAGES.includes(
+    pageNumber as (typeof QUARTERLY_PLANNER_PAGES)[number],
+  );
+}
+
+/** Mini-calendar spreads that tint date boxes purple instead of listing titles. */
+export function isCompactCalendarPage(pageNumber: number) {
+  return isYearOverviewPage(pageNumber) || isQuarterlyPlannerPage(pageNumber);
 }
 
 function parseDateFromCalendarUri(uri: string) {
@@ -22,7 +36,7 @@ export async function buildCalendarDatePageMap(pdf: PDFDocumentProxy) {
   const map = new Map<string, number>();
 
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
-    if (isYearOverviewPage(pageNumber)) continue;
+    if (isCompactCalendarPage(pageNumber)) continue;
 
     const page = await pdf.getPage(pageNumber);
     const annotations = await page.getAnnotations();

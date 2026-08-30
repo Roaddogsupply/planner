@@ -25,7 +25,7 @@ import { parseCalendarDayFromUri, prepareCalendarCells } from "@/lib/calendar-ce
 import type { CalendarDayCell, CalendarEvent } from "@/lib/calendar-types";
 import { imageHeightForWidth, imageWidthForHeight } from "@/lib/image-utils";
 import { CalendarOverlay } from "@/components/planner/calendar-overlay";
-import { isYearOverviewPage, resolveCalendarDayPage } from "@/lib/calendar-pages";
+import { isCompactCalendarPage, resolveCalendarDayPage } from "@/lib/calendar-pages";
 import { SectionIndexOverlay } from "@/components/planner/section-index-overlay";
 import { getSectionIndex, isSectionIndexOverlayLink, type SectionIndexEntry } from "@/lib/section-indexes";
 import { DEFAULT_INSTANCE_ID } from "@/lib/section-instances";
@@ -180,7 +180,7 @@ export function PdfPage({
 
         const pageLinks: LinkOverlay[] = [];
         const dayCells: CalendarDayCell[] = [];
-        const compactCalendar = isYearOverviewPage(pageNumber);
+        const compactCalendar = isCompactCalendarPage(pageNumber);
         for (const annotation of await page.getAnnotations()) {
           if (annotation.subtype !== "Link") continue;
 
@@ -480,7 +480,7 @@ export function PdfPage({
         <CalendarOverlay
           cells={calendarCells}
           events={calendarEvents}
-          compact={isYearOverviewPage(pageNumber)}
+          compact={isCompactCalendarPage(pageNumber)}
           onDateNavigate={(date) => {
             const targetPage = resolveCalendarDayPage(date, calendarDatePageMap);
             if (targetPage) onPageNavigate(targetPage);

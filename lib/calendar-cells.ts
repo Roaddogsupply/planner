@@ -7,8 +7,8 @@ type LinkOverlay = {
   height: number;
 };
 
-/** Month centers on year-overview spreads — used to pick the right mini calendar. */
-const OVERVIEW_MONTH_ANCHORS: Record<number, Record<number, { x: number; y: number }>> = {
+/** Month centers on compact calendar spreads — used to pick the right mini calendar. */
+const COMPACT_CALENDAR_MONTH_ANCHORS: Record<number, Record<number, { x: number; y: number }>> = {
   121: {
     1: { x: 14.7, y: 28 },
     2: { x: 22.6, y: 28.9 },
@@ -36,6 +36,26 @@ const OVERVIEW_MONTH_ANCHORS: Record<number, Record<number, { x: number; y: numb
     10: { x: 88, y: 54.8 },
     11: { x: 58.2, y: 80.4 },
     12: { x: 83.2, y: 79 },
+  },
+  124: {
+    1: { x: 32.1, y: 30.6 },
+    2: { x: 11, y: 56.1 },
+    3: { x: 11, y: 80.4 },
+  },
+  125: {
+    4: { x: 26.8, y: 30.6 },
+    5: { x: 37.4, y: 54.8 },
+    6: { x: 16.3, y: 79 },
+  },
+  126: {
+    7: { x: 26.8, y: 30.6 },
+    8: { x: 42.7, y: 54.8 },
+    9: { x: 21.5, y: 79 },
+  },
+  127: {
+    10: { x: 32.1, y: 30.6 },
+    11: { x: 11, y: 56.1 },
+    12: { x: 21.5, y: 79 },
   },
 };
 
@@ -102,9 +122,9 @@ export function filterMainGridCells(
   );
 }
 
-function scoreOverviewCell(cell: CalendarDayCell, pageNumber: number) {
+function scoreCompactCalendarCell(cell: CalendarDayCell, pageNumber: number) {
   const month = parseInt(cell.date.slice(5, 7), 10);
-  const anchor = OVERVIEW_MONTH_ANCHORS[pageNumber]?.[month];
+  const anchor = COMPACT_CALENDAR_MONTH_ANCHORS[pageNumber]?.[month];
   if (!anchor) return 0;
 
   const centerX = cell.x + cell.width / 2;
@@ -130,7 +150,7 @@ export function dedupeCalendarCells(
 
     const score = (c: CalendarDayCell) => {
       if (compact && pageNumber) {
-        return scoreOverviewCell(c, pageNumber);
+        return scoreCompactCalendarCell(c, pageNumber);
       }
 
       const centerX = c.x + c.width / 2;

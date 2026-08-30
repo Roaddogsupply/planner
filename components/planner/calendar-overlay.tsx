@@ -4,7 +4,7 @@ import { eventsForDate } from "@/lib/calendar-storage";
 type CalendarOverlayProps = {
   cells: CalendarDayCell[];
   events: CalendarEvent[];
-  /** Year overview tints date boxes purple; monthly pages show event titles. */
+  /** Year overview / quarterly pages tint date boxes purple; monthly pages show event titles. */
   compact?: boolean;
   onDateNavigate?: (date: string) => void;
 };
