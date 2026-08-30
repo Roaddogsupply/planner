@@ -45,6 +45,7 @@ import {
 } from "@/lib/section-instances";
 import { getSectionForPage, isSectionTargetPage, type SectionIndexEntry } from "@/lib/section-indexes";
 import { SectionInstanceBar } from "@/components/planner/section-instance-bar";
+import { buildCalendarDatePageMap } from "@/lib/calendar-pages";
 
 function formatLoadingMessage(progress: LoadProgress | null) {
   if (!progress) return "Starting planner…";
@@ -90,6 +91,7 @@ export function PlannerViewer() {
   const [calendarSyncing, setCalendarSyncing] = useState(false);
   const [calendarLastSynced, setCalendarLastSynced] = useState<string | null>(null);
   const [calendarSyncError, setCalendarSyncError] = useState<string | null>(null);
+  const [calendarDatePageMap, setCalendarDatePageMap] = useState<Record<string, number>>({});
   const [pendingImage, setPendingImage] = useState<{
     src: string;
     width: number;
@@ -256,6 +258,21 @@ export function PlannerViewer() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!pdf) return;
+
+    let cancelled = false;
+
+    void buildCalendarDatePageMap(pdf).then((map) => {
+      if (cancelled) return;
+      setCalendarDatePageMap(Object.fromEntries(map));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pdf]);
 
   useEffect(() => {
     if (loading || !hydrated || !plannerId) return;
@@ -701,6 +718,7 @@ export function PlannerViewer() {
               onSelectAnnotation={setSelectedId}
               onToggleCheckbox={handleToggleCheckbox}
               calendarEvents={calendarEvents}
+              calendarDatePageMap={calendarDatePageMap}
               pendingImage={pendingImage}
               onPendingImagePlaced={() => setPendingImage(null)}
             />

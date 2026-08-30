@@ -4,10 +4,50 @@ import { eventsForDate } from "@/lib/calendar-storage";
 type CalendarOverlayProps = {
   cells: CalendarDayCell[];
   events: CalendarEvent[];
+  /** Year overview uses dots; monthly pages show event titles. */
+  compact?: boolean;
+  onDateNavigate?: (date: string) => void;
 };
 
-export function CalendarOverlay({ cells, events }: CalendarOverlayProps) {
+export function CalendarOverlay({
+  cells,
+  events,
+  compact = false,
+  onDateNavigate,
+}: CalendarOverlayProps) {
   if (!cells.length || !events.length) return null;
+
+  if (compact) {
+    return (
+      <div className="pointer-events-none absolute inset-0 z-20">
+        {cells.map((cell, index) => {
+          const dayEvents = eventsForDate(events, cell.date);
+          if (!dayEvents.length) return null;
+
+          const titles = dayEvents.map((event) => event.summary).join(", ");
+
+          return (
+            <button
+              key={`${cell.date}-${index}`}
+              type="button"
+              className="calendar-event-dot pointer-events-auto absolute"
+              style={{
+                left: `${cell.x + cell.width / 2}%`,
+                top: `${cell.y + cell.height * 0.72}%`,
+                transform: "translate(-50%, -50%)",
+              }}
+              title={`${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"} — ${titles}`}
+              aria-label={`${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"} on ${cell.date}. Open day page.`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onDateNavigate?.(cell.date);
+              }}
+            />
+          );
+        })}
+      </div>
+    );
+  }
 
   return (
     <div className="pointer-events-none absolute inset-0 z-20">

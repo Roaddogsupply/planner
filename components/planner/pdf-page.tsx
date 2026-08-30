@@ -25,6 +25,7 @@ import { parseCalendarDayFromUri, prepareCalendarCells } from "@/lib/calendar-ce
 import type { CalendarDayCell, CalendarEvent } from "@/lib/calendar-types";
 import { imageHeightForWidth, imageWidthForHeight } from "@/lib/image-utils";
 import { CalendarOverlay } from "@/components/planner/calendar-overlay";
+import { isYearOverviewPage, resolveCalendarDayPage } from "@/lib/calendar-pages";
 import { SectionIndexOverlay } from "@/components/planner/section-index-overlay";
 import { getSectionIndex, isSectionIndexOverlayLink, type SectionIndexEntry } from "@/lib/section-indexes";
 import { DEFAULT_INSTANCE_ID } from "@/lib/section-instances";
@@ -46,6 +47,7 @@ type PdfPageProps = {
   onSelectAnnotation: (id: string | null) => void;
   onToggleCheckbox: (id: string) => void;
   calendarEvents: CalendarEvent[];
+  calendarDatePageMap: Record<string, number>;
   pendingImage: { src: string; width: number; height: number; aspectRatio: number } | null;
   onPendingImagePlaced: () => void;
 };
@@ -130,6 +132,7 @@ export function PdfPage({
   onSelectAnnotation,
   onToggleCheckbox,
   calendarEvents,
+  calendarDatePageMap,
   pendingImage,
   onPendingImagePlaced,
   activeInstanceId,
@@ -473,7 +476,15 @@ export function PdfPage({
       >
         <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
 
-        <CalendarOverlay cells={calendarCells} events={calendarEvents} />
+        <CalendarOverlay
+          cells={calendarCells}
+          events={calendarEvents}
+          compact={isYearOverviewPage(pageNumber)}
+          onDateNavigate={(date) => {
+            const targetPage = resolveCalendarDayPage(date, calendarDatePageMap);
+            if (targetPage) onPageNavigate(targetPage);
+          }}
+        />
 
         {sectionIndex && (
           <SectionIndexOverlay
