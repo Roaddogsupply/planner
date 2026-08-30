@@ -9,11 +9,3 @@ export function enqueuePdfTask<T>(task: () => Promise<T>): Promise<T> {
   );
   return run;
 }
-
-export function preferMainThreadPdf() {
-  if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent;
-  return (
-    (/iPhone|iPad|iPod/i.test(ua) || (/Safari/i.test(ua) && !/Chrome|Chromium|CriOS|FxiOS/i.test(ua)))
-  );
-}

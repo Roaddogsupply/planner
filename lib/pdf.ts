@@ -1,7 +1,6 @@
 "use client";
 
 import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
-import { enqueuePdfTask, preferMainThreadPdf } from "@/lib/pdf-task-queue";
 
 export const PDF_URL = "/planner.pdf";
 
@@ -9,6 +8,10 @@ export type LoadProgress = {
   phase: "starting" | "downloading" | "opening";
   percent: number;
 };
+
+function pdfWorkerSrc() {
+  return `${window.location.origin}/pdf.worker.min.mjs`;
+}
 
 async function fetchPdfBytes(
   onProgress?: (progress: LoadProgress) => void,
@@ -46,7 +49,6 @@ async function fetchPdfBytes(
         percent: Math.min(99, Math.round((received / contentLength) * 100)),
       });
     } else if (received > 0) {
-      // Unknown size — still show activity after first chunk arrives.
       onProgress?.({ phase: "downloading", percent: 50 });
     }
   }
@@ -69,12 +71,7 @@ async function openPdfBytes(
   onProgress?.({ phase: "opening", percent: 0 });
 
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-
-  if (preferMainThreadPdf()) {
-    pdfjs.GlobalWorkerOptions.workerSrc = "";
-  } else {
-    pdfjs.GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.min.mjs`;
-  }
+  pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerSrc();
 
   onProgress?.({ phase: "opening", percent: 50 });
 
@@ -99,9 +96,8 @@ async function openPdfBytes(
     onProgress?.({ phase: "opening", percent: 100 });
     return doc;
   } catch (firstError) {
-    // Safari and some mobile browsers hang when the module worker fails to start.
-    console.warn("PDF worker open failed, retrying on main thread:", firstError);
-    pdfjs.GlobalWorkerOptions.workerSrc = "";
+    console.warn("PDF open failed, retrying once:", firstError);
+    pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerSrc();
     const doc = await openDocument();
     onProgress?.({ phase: "opening", percent: 100 });
     return doc;
@@ -113,7 +109,6 @@ export async function loadPlannerDocument(
 ): Promise<PDFDocumentProxy> {
   onProgress?.({ phase: "starting", percent: 0 });
 
-  // Download first — do NOT import pdf.js until bytes are ready.
   const data = await fetchPdfBytes(onProgress);
   return openPdfBytes(data, onProgress);
 }
