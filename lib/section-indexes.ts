@@ -3,7 +3,19 @@ export type SectionIndexEntry = {
   page: number;
 };
 
-/** Shared geometry for section index lists (matches Finance / Self-Care tabs in the PDF). */
+/** Pastel bar colors — same sequence used on Travel, Finance, and other index tabs in the PDF. */
+export const INDEX_BAR_COLORS = [
+  "#b5cde0", /* light blue */
+  "#b5bdd8", /* periwinkle */
+  "#c8bdd4", /* lavender */
+  "#d4bfc8", /* dusty pink */
+  "#e0c4b8", /* peach */
+  "#d8cfc0", /* beige */
+  "#e8dcb8", /* yellow */
+  "#c8dbbf", /* mint */
+] as const;
+
+/** Shared geometry for section index lists (matches Travel / Finance tabs in the PDF). */
 export const INDEX_LIST_LAYOUT = {
   x: 7.5,
   width: 37.13,

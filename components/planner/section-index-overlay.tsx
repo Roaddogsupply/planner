@@ -1,9 +1,13 @@
-import { INDEX_LIST_LAYOUT, type SectionIndexConfig } from "@/lib/section-indexes";
+import { INDEX_BAR_COLORS, INDEX_LIST_LAYOUT, type SectionIndexConfig } from "@/lib/section-indexes";
 
 type SectionIndexOverlayProps = {
   config: SectionIndexConfig;
   onNavigate: (page: number) => void;
 };
+
+function barHoverColor(hex: string) {
+  return `color-mix(in oklab, ${hex} 88%, oklch(0.2 0 0))`;
+}
 
 export function SectionIndexOverlay({ config, onNavigate }: SectionIndexOverlayProps) {
   const { mask, rowTops, x, width, rowHeight } = INDEX_LIST_LAYOUT;
@@ -23,6 +27,8 @@ export function SectionIndexOverlay({ config, onNavigate }: SectionIndexOverlayP
         const top = rowTops[index];
         if (top === undefined) return null;
 
+        const barColor = INDEX_BAR_COLORS[index] ?? INDEX_BAR_COLORS[0];
+
         return (
           <button
             key={section.page}
@@ -33,6 +39,13 @@ export function SectionIndexOverlay({ config, onNavigate }: SectionIndexOverlayP
               top: `${((top - mask.y) / mask.height) * 100}%`,
               width: `${(width / mask.width) * 100}%`,
               height: `${(rowHeight / mask.height) * 100}%`,
+              backgroundColor: barColor,
+            }}
+            onMouseEnter={(event) => {
+              event.currentTarget.style.backgroundColor = barHoverColor(barColor);
+            }}
+            onMouseLeave={(event) => {
+              event.currentTarget.style.backgroundColor = barColor;
             }}
             onClick={() => onNavigate(section.page)}
           >
