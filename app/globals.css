@@ -167,12 +167,6 @@
   overflow: hidden;
 }
 
-.planner-page canvas {
-  display: block;
-  max-width: 100%;
-  height: auto;
-}
-
 .planner-link-hit {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
