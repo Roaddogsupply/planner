@@ -129,6 +129,8 @@ Railway detects the push and **automatically redeploys** (usually within a few m
 | Push to GitHub fails | Make sure you replaced `YOUR_GITHUB_USERNAME` and created the empty repo first |
 | Railway build fails | In Railway → your service → **Deployments** → click the failed deploy → read the red error log |
 | Site loads but planner stuck on “Downloading…” | Wait up to 60 seconds (37 MB file). Try hard refresh: `Cmd+Shift+R` |
+| Browse button shows but clicks do nothing | Hard refresh: `Cmd+Shift+R` (Mac) or `Ctrl+Shift+R` (Windows). Your browser may be using an old cached version. |
+| Fixes work in Cursor but not on Railway | Run `git pull origin main` before `git push github main`. Check Railway → Deployments for a recent green build. |
 | “Application failed to respond” | In Railway → **Settings** → check that a domain was generated under Networking |
 
 ---
