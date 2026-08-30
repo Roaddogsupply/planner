@@ -36,6 +36,8 @@ export type CalendarPageIndex = {
   weekPageMap: Record<string, number>;
   /** Week spread whose top row begins on this Sunday (YYYY-MM-DD). */
   weekPageByStart: Record<string, number>;
+  /** PDF week spread for each date (from the daily page's own week link). */
+  weekPageByDate: Record<string, number>;
   /** Row Y position (page %) for that week's Sunday on its spread. */
   weekRowByStart: Record<string, number>;
   monthPageMap: Record<string, number>;
@@ -86,6 +88,9 @@ export function resolveMonthPage(date: string) {
 }
 
 export function resolveWeekPage(date: string, index: CalendarPageIndex) {
+  const fromDaily = index.weekPageByDate[date];
+  if (fromDaily) return fromDaily;
+
   const weekStart = sundayOfWeek(date);
   const cached = index.weekPageByStart?.[weekStart];
   if (cached) return cached;
@@ -224,6 +229,35 @@ export function resolveCalendarSidebarNavigation(
   return null;
 }
 
+async function findDailyWeekLinkPage(
+  pdf: PDFDocumentProxy,
+  annotations: Array<{ subtype?: string; dest?: unknown; rect?: number[] }>,
+  viewport: { convertToViewportPoint: (x: number, y: number) => number[]; width: number; height: number },
+) {
+  for (const annotation of annotations) {
+    if (annotation.subtype !== "Link" || !annotation.dest || !annotation.rect) continue;
+
+    const rect = annotation.rect;
+    const [vx1, vy1] = viewport.convertToViewportPoint(rect[0], rect[1]);
+    const [vx2, vy2] = viewport.convertToViewportPoint(rect[2], rect[3]);
+    const x = (Math.min(vx1, vx2) / viewport.width) * 100;
+    const y = (Math.min(vy1, vy2) / viewport.height) * 100;
+
+    if (x < 5 || x > 8 || y < 15 || y > 20) continue;
+
+    const dest =
+      typeof annotation.dest === "string"
+        ? await pdf.getDestination(annotation.dest)
+        : annotation.dest;
+    const ref = Array.isArray(dest) ? dest[0] : null;
+    if (!ref) continue;
+
+    return (await pdf.getPageIndex(ref)) + 1;
+  }
+
+  return null;
+}
+
 function collectWeekRows(
   annotations: Array<{ subtype?: string; url?: string; unsafeUrl?: string; rect?: number[] }>,
   viewport: { convertToViewportPoint: (x: number, y: number) => number[]; width: number; height: number },
@@ -262,6 +296,7 @@ export async function buildCalendarPageIndex(pdf: PDFDocumentProxy): Promise<Cal
   const dailyPageDates: Record<number, string> = {};
   const weekPageMap = new Map<string, number>();
   const weekPageByStart = new Map<string, { page: number; rowY: number }>();
+  const weekPageByDate = new Map<string, number>();
   const weekRowByStart: Record<string, number> = {};
   const monthPageMap: Record<string, number> = {};
   const dailyPlannerPages = new Set<number>();
@@ -291,6 +326,11 @@ export async function buildCalendarPageIndex(pdf: PDFDocumentProxy): Promise<Cal
           datePageMap.set(date, pageNumber);
           dailyPageDates[pageNumber] = date;
           dailyPlannerPages.add(pageNumber);
+
+          const weekPage = await findDailyWeekLinkPage(pdf, annotations, viewport);
+          if (weekPage) {
+            weekPageByDate.set(date, weekPage);
+          }
           continue;
         }
       }
@@ -328,6 +368,7 @@ export async function buildCalendarPageIndex(pdf: PDFDocumentProxy): Promise<Cal
     weekPageByStart: Object.fromEntries(
       [...weekPageByStart.entries()].map(([sunday, entry]) => [sunday, entry.page]),
     ),
+    weekPageByDate: Object.fromEntries(weekPageByDate),
     weekRowByStart,
     monthPageMap,
     yearPageMap: { "2026": YEAR_OVERVIEW_PAGES[0], "2027": YEAR_OVERVIEW_PAGES[1] },
