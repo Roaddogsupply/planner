@@ -55,6 +55,7 @@ const EMPTY_CALENDAR_INDEX: CalendarPageIndex = {
   datePageMap: {},
   dailyPageDates: {},
   weekPageMap: {},
+  weekPageByStart: {},
   monthPageMap: {},
   yearPageMap: { "2026": 121, "2027": 122 },
   dailyPlannerPages: [],

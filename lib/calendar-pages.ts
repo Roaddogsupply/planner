@@ -34,6 +34,8 @@ export type CalendarPageIndex = {
   datePageMap: Record<string, number>;
   dailyPageDates: Record<number, string>;
   weekPageMap: Record<string, number>;
+  /** Week spread whose top row begins on this Sunday (YYYY-MM-DD). */
+  weekPageByStart: Record<string, number>;
   monthPageMap: Record<string, number>;
   yearPageMap: Record<string, number>;
   dailyPlannerPages: number[];
@@ -65,6 +67,37 @@ export function parseDateFromCalendarUri(uri: string) {
   if (!match) return null;
   const date = decodeURIComponent(match[1]).slice(0, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+}
+
+/** Sunday that starts the week containing this YYYY-MM-DD date (UTC-safe). */
+export function sundayOfWeek(date: string) {
+  const [year, month, day] = date.split("-").map(Number);
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  utc.setUTCDate(utc.getUTCDate() - utc.getUTCDay());
+  return utc.toISOString().slice(0, 10);
+}
+
+export function resolveMonthPage(date: string) {
+  const monthIndex = parseInt(date.slice(5, 7), 10);
+  if (monthIndex < 1 || monthIndex > 12) return null;
+  return MONTHLY_TAB_PAGES[monthIndex - 1];
+}
+
+export function resolveWeekPage(date: string, index: CalendarPageIndex) {
+  const weekStart = sundayOfWeek(date);
+  const cached = index.weekPageByStart?.[weekStart];
+  if (cached) return cached;
+
+  // Fallback while the index is still building.
+  return index.weekPageMap[date] ?? index.weekPageMap[weekStart] ?? null;
+}
+
+export function calendarDateContext(
+  pageNumber: number,
+  activeDate: string | null,
+  index: CalendarPageIndex,
+) {
+  return activeDate ?? dateForPlannerPage(pageNumber, index);
 }
 
 function extractDailyPageDate(text: string) {
@@ -152,22 +185,24 @@ export function resolveCalendarSidebarNavigation(
   }
 
   if (tabIndex === 0) {
+    const dateContext = calendarDateContext(currentPage, activeDate, index);
+
     if (index.dailyPlannerPages.includes(currentPage)) {
-      if (!activeDate) {
+      if (!dateContext) {
         return index.yearPageMap["2026"] ?? YEAR_OVERVIEW_PAGES[0];
       }
-      return index.weekPageMap[activeDate] ?? null;
+      return resolveWeekPage(dateContext, index);
     }
 
     if (index.weekPlannerPages.includes(currentPage)) {
-      if (!activeDate) {
+      if (!dateContext) {
         return index.yearPageMap["2026"] ?? YEAR_OVERVIEW_PAGES[0];
       }
-      return index.monthPageMap[activeDate.slice(0, 7)] ?? null;
+      return resolveMonthPage(dateContext);
     }
 
     if (index.monthlyPlannerPages.includes(currentPage)) {
-      const year = activeDate?.slice(0, 4) ?? "2026";
+      const year = dateContext?.slice(0, 4) ?? "2026";
       return index.yearPageMap[year] ?? YEAR_OVERVIEW_PAGES[0];
     }
   }
@@ -179,17 +214,52 @@ export function resolveCalendarSidebarNavigation(
   return null;
 }
 
+function collectWeekRows(
+  annotations: Array<{ subtype?: string; url?: string; unsafeUrl?: string; rect?: number[] }>,
+  viewport: { convertToViewportPoint: (x: number, y: number) => number[]; width: number; height: number },
+) {
+  const byY = new Map<number, string[]>();
+
+  for (const annotation of annotations) {
+    if (annotation.subtype !== "Link") continue;
+    const uri = annotation.url || annotation.unsafeUrl || "";
+    const date = parseDateFromCalendarUri(uri);
+    if (!date || !annotation.rect) continue;
+
+    const rect = annotation.rect;
+    const [vx1, vy1] = viewport.convertToViewportPoint(rect[0], rect[1]);
+    const [vx2, vy2] = viewport.convertToViewportPoint(rect[2], rect[3]);
+    const y = Math.round((Math.min(vy1, vy2) / viewport.height) * 100);
+    const bucket = byY.get(y) ?? [];
+    bucket.push(date);
+    byY.set(y, bucket);
+  }
+
+  return [...byY.entries()]
+    .sort(([yA], [yB]) => yA - yB)
+    .map(([y, dates]) => ({
+      y,
+      sunday: dates.sort()[0],
+    }));
+}
+
 /**
  * Maps calendar dates to daily/week/month/year spreads.
- * Daily pages use the printed header; week/month maps come from PDF link grids.
+ * Daily pages use the printed header; week pages use each spread's top-row Sunday.
  */
 export async function buildCalendarPageIndex(pdf: PDFDocumentProxy): Promise<CalendarPageIndex> {
   const datePageMap = new Map<string, number>();
   const dailyPageDates: Record<number, string> = {};
   const weekPageMap = new Map<string, number>();
-  const monthPageMap = new Map<string, number>();
+  const weekPageByStart = new Map<string, { page: number; rowY: number }>();
+  const monthPageMap: Record<string, number> = {};
   const dailyPlannerPages = new Set<number>();
   const weekPlannerPages = new Set<number>();
+
+  for (let monthIndex = 1; monthIndex <= 12; monthIndex++) {
+    const monthKey = `2026-${String(monthIndex).padStart(2, "0")}`;
+    monthPageMap[monthKey] = MONTHLY_TAB_PAGES[monthIndex - 1];
+  }
 
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
     if (isCompactCalendarPage(pageNumber)) continue;
@@ -199,6 +269,7 @@ export async function buildCalendarPageIndex(pdf: PDFDocumentProxy): Promise<Cal
     const fromDateCount = countFromDateLinks(annotations);
 
     if (fromDateCount >= 35 && fromDateCount <= 55) {
+      const viewport = page.getViewport({ scale: 1 });
       const text = (await page.getTextContent()).items
         .map((item) => ("str" in item ? item.str : ""))
         .join(" ");
@@ -215,20 +286,24 @@ export async function buildCalendarPageIndex(pdf: PDFDocumentProxy): Promise<Cal
 
       if (!text.includes("Breakfast")) {
         weekPlannerPages.add(pageNumber);
+
+        const rows = collectWeekRows(annotations, viewport);
+        for (const row of rows) {
+          const existing = weekPageByStart.get(row.sunday);
+          if (
+            !existing ||
+            row.y < existing.rowY ||
+            (row.y === existing.rowY && pageNumber < existing.page)
+          ) {
+            weekPageByStart.set(row.sunday, { page: pageNumber, rowY: row.y });
+          }
+        }
+
         for (const date of collectFromDates(annotations)) {
           const existing = weekPageMap.get(date);
           if (existing === undefined || pageNumber < existing) {
             weekPageMap.set(date, pageNumber);
           }
-        }
-      }
-    }
-
-    if (isMonthlyPlannerPage(pageNumber)) {
-      for (const date of collectFromDates(annotations)) {
-        const monthKey = date.slice(0, 7);
-        if (!monthPageMap.has(monthKey)) {
-          monthPageMap.set(monthKey, pageNumber);
         }
       }
     }
@@ -238,7 +313,10 @@ export async function buildCalendarPageIndex(pdf: PDFDocumentProxy): Promise<Cal
     datePageMap: Object.fromEntries(datePageMap),
     dailyPageDates,
     weekPageMap: Object.fromEntries(weekPageMap),
-    monthPageMap: Object.fromEntries(monthPageMap),
+    weekPageByStart: Object.fromEntries(
+      [...weekPageByStart.entries()].map(([sunday, entry]) => [sunday, entry.page]),
+    ),
+    monthPageMap,
     yearPageMap: { "2026": YEAR_OVERVIEW_PAGES[0], "2027": YEAR_OVERVIEW_PAGES[1] },
     dailyPlannerPages: [...dailyPlannerPages],
     weekPlannerPages: [...weekPlannerPages],

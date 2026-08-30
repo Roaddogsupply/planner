@@ -30,6 +30,7 @@ import {
   isCalendarSidebarTab,
   getCalendarSidebarTabIndex,
   isCalendarIndexReady,
+  calendarDateContext,
   needsCalendarSidebarOverride,
   parseDateFromCalendarUri,
   resolveCalendarDayPage,
@@ -291,14 +292,19 @@ export function PdfPage({
         const tabIndex = getCalendarSidebarTabIndex(link);
 
         if (isCalendarIndexReady(calendarPageIndex)) {
-          const overridePage = resolveCalendarSidebarNavigation(
-            tabIndex,
+          const dateContext = calendarDateContext(
             pageNumber,
             activeCalendarDate,
             calendarPageIndex,
           );
+          const overridePage = resolveCalendarSidebarNavigation(
+            tabIndex,
+            pageNumber,
+            dateContext,
+            calendarPageIndex,
+          );
           if (overridePage) {
-            onPageNavigate(overridePage, undefined, activeCalendarDate ?? undefined);
+            onPageNavigate(overridePage, undefined, dateContext ?? undefined);
             return;
           }
         }
