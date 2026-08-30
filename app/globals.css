@@ -164,7 +164,6 @@
     0 4px 12px oklch(0 0 0 / 8%);
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
-  overflow: hidden;
 }
 
 .planner-link-hit {

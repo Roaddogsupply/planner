@@ -18,11 +18,6 @@ export const metadata: Metadata = {
     "Fill in your digital planner online — same look and navigation as the PDF.",
 };
 
-export const viewport = {
-  width: "device-width",
-  initialScale: 1,
-};
-
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
