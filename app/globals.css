@@ -279,6 +279,15 @@
   text-align: center;
 }
 
+.section-index-add-btn-dense .section-index-add-count {
+  top: -0.25rem;
+  right: -0.25rem;
+  min-width: 0.85rem;
+  height: 0.85rem;
+  font-size: 0.5rem;
+  line-height: 0.85rem;
+}
+
 .section-instance-bar {
   background: oklch(0.99 0.005 90 / 88%);
   border: 1px solid oklch(0.75 0.02 90 / 45%);

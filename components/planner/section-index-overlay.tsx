@@ -21,18 +21,21 @@ function AddCopyButton({
   section,
   extraCount,
   onAddCopy,
+  addButton,
+  dense,
 }: {
   section: SectionIndexEntry;
   extraCount: number;
   onAddCopy: (section: SectionIndexEntry) => void;
+  addButton: { x: number; width: number; height: number; topOffset?: number };
+  dense?: boolean;
 }) {
-  const { addButton } = INDEX_LIST_LAYOUT;
-  const top = section.rowTop + 0.35;
+  const top = section.rowTop + (addButton.topOffset ?? 0.35);
 
   return (
     <button
       type="button"
-      className="section-index-add-btn absolute flex items-center justify-center"
+      className={`section-index-add-btn absolute flex items-center justify-center${dense ? " section-index-add-btn-dense" : ""}`}
       style={{
         left: `${addButton.x}%`,
         top: `${top}%`,
@@ -46,7 +49,7 @@ function AddCopyButton({
         onAddCopy(section);
       }}
     >
-      <Plus className="size-3.5" strokeWidth={2.5} />
+      <Plus className={dense ? "size-3" : "size-3.5"} strokeWidth={2.5} />
       {extraCount > 0 && (
         <span className="section-index-add-count">{extraCount + 1}</span>
       )}
@@ -60,7 +63,9 @@ export function SectionIndexOverlay({
   onNavigate,
   onAddCopy,
 }: SectionIndexOverlayProps) {
-  const { mask, rowTops, x, width, rowHeight } = INDEX_LIST_LAYOUT;
+  const { mask, rowTops, x, width, rowHeight, addButton: defaultAddButton } = INDEX_LIST_LAYOUT;
+  const addButton = config.addButton ?? defaultAddButton;
+  const dense = Boolean(config.addButton);
 
   if (config.variant === "addons") {
     return (
@@ -74,6 +79,8 @@ export function SectionIndexOverlay({
             section={section}
             extraCount={instanceCounts[section.page] ?? 0}
             onAddCopy={onAddCopy}
+            addButton={addButton}
+            dense={dense}
           />
         ))}
       </div>

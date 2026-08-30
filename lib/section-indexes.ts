@@ -36,10 +36,79 @@ export type SectionIndexConfig = {
   /** full = redraw bars (Education). addons = keep PDF bars, only show "+" buttons */
   variant: "full" | "addons";
   sections: SectionIndexEntry[];
+  /** Override default "+" button size/placement (e.g. Personal Growth has tighter rows). */
+  addButton?: { x: number; width: number; height: number; topOffset?: number };
 };
 
 /** Index pages for tab dashboards — left-side colored section links. */
 export const SECTION_INDEX_PAGES: SectionIndexConfig[] = [
+  {
+    pageNumber: 2,
+    title: "Personal Growth",
+    variant: "addons",
+    addButton: { x: 45.5, width: 3.4, height: 3.6, topOffset: 0.15 },
+    sections: [
+      { label: "Goal Setter", page: 3, rowTop: 18.1 },
+      { label: "Know Yourself Journal", page: 4, rowTop: 22.9 },
+      { label: "Inspiration Board", page: 5, rowTop: 27.7 },
+      { label: "Passions & Hobbies Log", page: 6, rowTop: 32.4 },
+      { label: "Milestone Map", page: 7, rowTop: 37.1 },
+      { label: "Core Beliefs Tracker", page: 8, rowTop: 41.9 },
+      { label: "Self-Awareness Matrix", page: 9, rowTop: 46.7 },
+      { label: "People & Moments Tracker", page: 10, rowTop: 51.4 },
+      { label: "Moments of Gratitude", page: 11, rowTop: 56.2 },
+      { label: "Guiding Beliefs Page", page: 12, rowTop: 61.0 },
+      { label: "Pet Care Log", page: 13, rowTop: 65.8 },
+      { label: "Mood & Mind Log", page: 14, rowTop: 70.6 },
+      { label: "Reading Journal", page: 15, rowTop: 75.2 },
+      { label: "Dream Goals Log", page: 16, rowTop: 80.1 },
+      { label: "Friendship Tracker", page: 17, rowTop: 84.8 },
+    ],
+  },
+  {
+    pageNumber: 53,
+    title: "Vision",
+    variant: "addons",
+    sections: [
+      { label: "Vision Board", page: 54, rowTop: 18.8 },
+      { label: "Long Term Goals", page: 55, rowTop: 29.0 },
+      { label: "Five-Year Roadmap", page: 56, rowTop: 39.2 },
+      { label: "Monthly Reflection", page: 57, rowTop: 49.4 },
+      { label: "Dream Journal", page: 58, rowTop: 59.7 },
+      { label: "Career Vision", page: 59, rowTop: 69.8 },
+      { label: "Relationship Vision", page: 60, rowTop: 79.9 },
+    ],
+  },
+  {
+    pageNumber: 61,
+    title: "Planning",
+    variant: "addons",
+    sections: [
+      { label: "Goal Setting", page: 62, rowTop: 18.5 },
+      { label: "Top Priorities Tracker", page: 63, rowTop: 27.4 },
+      { label: "To-Do List", page: 64, rowTop: 36.3 },
+      { label: "Project Planning", page: 65, rowTop: 45.2 },
+      { label: "Event Organizer", page: 66, rowTop: 54.4 },
+      { label: "Weekly Layout", page: 67, rowTop: 63.1 },
+      { label: "Daily Time Blocker", page: 68, rowTop: 72.1 },
+      { label: "Goal Action Plan", page: 69, rowTop: 80.9 },
+    ],
+  },
+  {
+    pageNumber: 70,
+    title: "Household",
+    variant: "addons",
+    sections: [
+      { label: "Task & Chore", page: 71, rowTop: 18.7 },
+      { label: "Meal Plan", page: 72, rowTop: 27.8 },
+      { label: "Home Cleaning", page: 73, rowTop: 36.5 },
+      { label: "Appointments", page: 74, rowTop: 45.7 },
+      { label: "Maintenance Job", page: 75, rowTop: 54.6 },
+      { label: "Recipe Planner", page: 76, rowTop: 63.3 },
+      { label: "Family Event", page: 77, rowTop: 72.5 },
+      { label: "Grocery", page: 78, rowTop: 81.4 },
+    ],
+  },
   {
     pageNumber: 18,
     title: "Self-care",
