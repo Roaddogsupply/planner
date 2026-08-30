@@ -14,6 +14,20 @@ type LinkOverlay = {
   uri?: string;
 };
 
+/** Must match expandLink(padding) in scripts/extract-planner-links.mjs */
+const STORED_LINK_HIT_PADDING = 0.5;
+
+/** Turn a stored tap target back into the tight date-box overlay used on mini calendars. */
+export function overlayCellFromStoredLink(link: LinkOverlay, date: string): CalendarDayCell {
+  const raw: LinkOverlay = {
+    x: link.x + STORED_LINK_HIT_PADDING,
+    y: link.y + STORED_LINK_HIT_PADDING,
+    width: link.width - STORED_LINK_HIT_PADDING * 2,
+    height: link.height - STORED_LINK_HIT_PADDING * 2,
+  };
+  return expandCalendarDayCell(date, raw, true);
+}
+
 /** Build calendar day hit areas from prebuilt planner-links.json (Safari-safe). */
 export function collectDayCellsFromLinks(links: LinkOverlay[]): CalendarDayCell[] {
   const dayCells: CalendarDayCell[] = [];
@@ -26,14 +40,7 @@ export function collectDayCellsFromLinks(links: LinkOverlay[]): CalendarDayCell[
     const date = decodeURIComponent(match[1]).slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
 
-    // Stored links are already expanded for tap targets at build time.
-    dayCells.push({
-      date,
-      x: link.x,
-      y: link.y,
-      width: link.width,
-      height: link.height,
-    });
+    dayCells.push(overlayCellFromStoredLink(link, date));
   }
 
   return dayCells;
