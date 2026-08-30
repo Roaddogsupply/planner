@@ -170,6 +170,8 @@ export function PdfPage({
     anchorY: number;
     aspectRatio: number;
   } | null>(null);
+  /** Browse mode handles links on pointerdown; suppress the follow-up click. */
+  const linkGestureHandledRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -406,7 +408,9 @@ export function PdfPage({
 
   const handlePointerDownCapture = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (tool !== "navigate") return;
+    linkGestureHandledRef.current = false;
     if (tryNavigateLinkAt(event.clientX, event.clientY)) {
+      linkGestureHandledRef.current = true;
       event.preventDefault();
       event.stopPropagation();
     }
@@ -415,11 +419,20 @@ export function PdfPage({
   const handlePageClick = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (!containerRef.current) return;
 
-    const point = getPointerPercent(event);
-    const link = hitTestLink(point.x, point.y, links);
-    if (link) {
-      handleLinkClick(link);
+    if (tool === "navigate" && linkGestureHandledRef.current) {
+      linkGestureHandledRef.current = false;
+      event.preventDefault();
+      event.stopPropagation();
       return;
+    }
+
+    const point = getPointerPercent(event);
+    if (tool !== "navigate") {
+      const link = hitTestLink(point.x, point.y, links);
+      if (link) {
+        handleLinkClick(link);
+        return;
+      }
     }
 
     const pageCheckboxes = annotations.filter(
