@@ -41,3 +41,4 @@ yarn-error.log*
 next-env.d.ts
 # planner cloud saves (local dev)
 /.data/
+source/planner.pdf
