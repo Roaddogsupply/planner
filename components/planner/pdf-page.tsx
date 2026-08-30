@@ -43,6 +43,7 @@ import {
   resolveCalendarDayPage,
   resolveCalendarSidebarNavigationWithLinks,
   resolveWeekRowY,
+  resolveYearOverviewPage,
   type CalendarPageIndex,
 } from "@/lib/calendar-pages";
 import { SectionIndexOverlay } from "@/components/planner/section-index-overlay";
@@ -395,7 +396,7 @@ export function PdfPage({
     }
 
     if (link.page) {
-      onPageNavigate(link.page);
+      onPageNavigate(resolveYearOverviewPage(link.page));
       return;
     }
 

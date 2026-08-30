@@ -1,7 +1,11 @@
 import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
 
-/** Whole-year overview spreads — event titles are too cramped here. */
-export const YEAR_OVERVIEW_PAGES = [121, 122] as const;
+/** Wrong 3-across year grid — the PDF also has page 122 with the correct layout. */
+export const YEAR_OVERVIEW_PAGE_LEGACY = 121;
+/** Correct year overview: 2 months side-by-side, 3 rows per page (6 months per side). */
+export const YEAR_OVERVIEW_PAGE = 122;
+
+export const YEAR_OVERVIEW_PAGES = [YEAR_OVERVIEW_PAGE, YEAR_OVERVIEW_PAGE_LEGACY] as const;
 
 /** Three-month quarterly spreads — same compact purple date boxes. */
 export const QUARTERLY_PLANNER_PAGES = [124, 125, 126, 127] as const;
@@ -49,6 +53,11 @@ export type CalendarPageIndex = {
 
 export function isYearOverviewPage(pageNumber: number) {
   return YEAR_OVERVIEW_PAGES.includes(pageNumber as (typeof YEAR_OVERVIEW_PAGES)[number]);
+}
+
+/** Page 121 is an alternate 3×2 layout; always show page 122 instead. */
+export function resolveYearOverviewPage(pageNumber: number) {
+  return pageNumber === YEAR_OVERVIEW_PAGE_LEGACY ? YEAR_OVERVIEW_PAGE : pageNumber;
 }
 
 export function isQuarterlyPlannerPage(pageNumber: number) {
@@ -438,7 +447,7 @@ export async function buildCalendarPageIndex(pdf: PDFDocumentProxy): Promise<Cal
     weekPageByDate: Object.fromEntries(weekPageByDate),
     weekRowByStart,
     monthPageMap,
-    yearPageMap: { "2026": YEAR_OVERVIEW_PAGES[0], "2027": YEAR_OVERVIEW_PAGES[1] },
+    yearPageMap: { "2026": YEAR_OVERVIEW_PAGE, "2027": YEAR_OVERVIEW_PAGE },
     dailyPlannerPages: [...dailyPlannerPages],
     weekPlannerPages: [...weekPlannerPages],
     monthlyPlannerPages: [...MONTHLY_PLANNER_PAGES],

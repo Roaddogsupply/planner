@@ -45,7 +45,14 @@ import {
 } from "@/lib/section-instances";
 import { getSectionForPage, isSectionTargetPage, type SectionIndexEntry } from "@/lib/section-indexes";
 import { SectionInstanceBar } from "@/components/planner/section-instance-bar";
-import { buildCalendarPageIndex, dateForPlannerPage, type CalendarPageIndex } from "@/lib/calendar-pages";
+import {
+  buildCalendarPageIndex,
+  dateForPlannerPage,
+  resolveYearOverviewPage,
+  YEAR_OVERVIEW_PAGE,
+  YEAR_OVERVIEW_PAGE_LEGACY,
+  type CalendarPageIndex,
+} from "@/lib/calendar-pages";
 import { loadPlannerLinksFile } from "@/lib/planner-links";
 
 const EMPTY_CALENDAR_INDEX: CalendarPageIndex = {
@@ -56,7 +63,7 @@ const EMPTY_CALENDAR_INDEX: CalendarPageIndex = {
   weekPageByDate: {},
   weekRowByStart: {},
   monthPageMap: {},
-  yearPageMap: { "2026": 121, "2027": 122 },
+  yearPageMap: { "2026": YEAR_OVERVIEW_PAGE, "2027": YEAR_OVERVIEW_PAGE },
   dailyPlannerPages: [],
   weekPlannerPages: [],
   monthlyPlannerPages: [],
@@ -133,7 +140,7 @@ export function PlannerViewer() {
 
       if (cloud) {
         const migrated = migratePlannerData(cloud);
-        setPage(migrated.lastPage);
+        setPage(resolveYearOverviewPage(migrated.lastPage));
         setZoom(migrated.zoom || fitZoom());
         setTool("navigate");
         setAnnotations(migrated.annotations);
@@ -142,7 +149,7 @@ export function PlannerViewer() {
         setTextStyle(normalizeTextStyle(migrated.textStyle));
         savePlannerData(migrated);
       } else {
-        setPage(local.lastPage);
+        setPage(resolveYearOverviewPage(local.lastPage));
         setZoom(local.zoom || fitZoom());
         setTool("navigate");
         setAnnotations(local.annotations);
@@ -374,10 +381,18 @@ export function PlannerViewer() {
       }
 
       if (event.key === "ArrowLeft") {
-        setPage((current) => Math.max(1, current - 1));
+        setPage((current) => {
+          let next = Math.max(1, current - 1);
+          if (next === YEAR_OVERVIEW_PAGE_LEGACY) next = YEAR_OVERVIEW_PAGE - 2;
+          return next;
+        });
       }
       if (event.key === "ArrowRight") {
-        setPage((current) => Math.min(pdf.numPages, current + 1));
+        setPage((current) => {
+          let next = Math.min(pdf.numPages, current + 1);
+          if (next === YEAR_OVERVIEW_PAGE_LEGACY) next = YEAR_OVERVIEW_PAGE;
+          return next;
+        });
       }
       if (event.key === "Escape") {
         setTool("navigate");
@@ -419,9 +434,13 @@ export function PlannerViewer() {
     return counts;
   }, [sectionInstances]);
 
+  const goToPage = useCallback((targetPage: number) => {
+    setPage(resolveYearOverviewPage(targetPage));
+  }, []);
+
   const navigateToSection = useCallback(
     (targetPage: number, instanceId?: string, calendarDate?: string) => {
-      setPage(targetPage);
+      goToPage(targetPage);
       if (calendarDate) {
         setActiveCalendarDate(calendarDate);
       } else {
@@ -434,8 +453,14 @@ export function PlannerViewer() {
         setActiveSectionInstances((current) => ({ ...current, [targetPage]: instanceId }));
       }
     },
-    [calendarPageIndex],
+    [calendarPageIndex, goToPage],
   );
+
+  useEffect(() => {
+    if (page === YEAR_OVERVIEW_PAGE_LEGACY) {
+      goToPage(YEAR_OVERVIEW_PAGE);
+    }
+  }, [page, goToPage]);
 
   useEffect(() => {
     const pageDate = dateForPlannerPage(page, calendarPageIndex);
@@ -663,7 +688,7 @@ export function PlannerViewer() {
         editingSelectedText={Boolean(selectedText)}
         savedLabel={savedLabel}
         restoreLink={restoreLink}
-        onPageChange={setPage}
+        onPageChange={goToPage}
         onZoomChange={setZoom}
         onToolChange={(next) => {
           setTool(next);
