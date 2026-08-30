@@ -18,6 +18,7 @@ import {
   Trash2,
   Download,
   Link2,
+  MousePointer2,
   RotateCcw,
 } from "lucide-react";
 
@@ -162,9 +163,19 @@ export function PlannerToolbar({
 
         <div className="flex flex-wrap items-center gap-2">
           <Button
+            variant={tool === "navigate" ? "default" : "outline"}
+            size="sm"
+            title="Click dates and tabs to move around the planner"
+            onClick={() => onToolChange("navigate")}
+          >
+            <MousePointer2 />
+            Browse
+          </Button>
+
+          <Button
             variant={tool === "text" ? "default" : "outline"}
             size="sm"
-            title="Click lines and boxes to type"
+            title="Click the page to add typed notes"
             onClick={() => onToolChange("text")}
           >
             <Pencil />

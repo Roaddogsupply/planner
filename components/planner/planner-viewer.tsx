@@ -94,7 +94,7 @@ export function PlannerViewer() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [zoom, setZoom] = useState(1);
-  const [tool, setTool] = useState<PlannerTool>("text");
+  const [tool, setTool] = useState<PlannerTool>("navigate");
   const [textStyle, setTextStyle] = useState<TextStyle>(DEFAULT_TEXT_STYLE);
   const [annotations, setAnnotations] = useState<PlannerAnnotation[]>([]);
   const [sectionInstances, setSectionInstances] = useState<SectionInstance[]>([]);
@@ -377,6 +377,12 @@ export function PlannerViewer() {
       if (event.key === "ArrowRight") {
         setPage((current) => Math.min(pdf.numPages, current + 1));
       }
+      if (event.key === "Escape") {
+        setTool("navigate");
+        setSelectedId(null);
+        return;
+      }
+
       if (event.key === "Delete" && selectedId) {
         setAnnotations((current) => current.filter((item) => item.id !== selectedId));
         setSelectedId(null);

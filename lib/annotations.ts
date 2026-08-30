@@ -48,7 +48,14 @@ export type ImageAnnotation = {
 
 export type PlannerAnnotation = TextAnnotation | CheckboxAnnotation | ImageAnnotation;
 
-export type PlannerTool = "text" | "checkbox" | "image";
+export type PlannerTool = "navigate" | "text" | "checkbox" | "image";
+
+function normalizeTool(tool: unknown): PlannerTool {
+  if (tool === "navigate" || tool === "text" || tool === "checkbox" || tool === "image") {
+    return tool;
+  }
+  return "navigate";
+}
 
 export type PlannerData = {
   version: 4;
@@ -203,7 +210,7 @@ export function loadPlannerData(): PlannerData {
     activeSectionInstances: {},
     lastPage: 1,
     zoom: 1,
-    tool: "text",
+    tool: "navigate",
   };
 
   if (typeof window === "undefined") return fallback;
@@ -226,7 +233,7 @@ export function loadPlannerData(): PlannerData {
       activeSectionInstances: normalizeActiveSectionInstances(parsed.activeSectionInstances),
       lastPage: parsed.lastPage ?? 1,
       zoom: parsed.zoom ?? 1,
-      tool: parsed.tool ?? "text",
+      tool: parsed.tool ?? "navigate",
       textStyle: normalizeTextStyle(parsed.textStyle),
     } as AnyPlannerData);
 

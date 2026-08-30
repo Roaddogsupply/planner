@@ -464,6 +464,8 @@ export function PdfPage({
 
     if (tool === "image") return;
 
+    if (tool !== "text") return;
+
     const text = createTextAnnotation(
       pageNumber,
       point.x,
@@ -585,7 +587,13 @@ export function PdfPage({
         ref={containerRef}
         className={cn(
           "planner-page relative w-full select-none",
-          tool === "text" ? "cursor-text" : tool === "image" ? "cursor-copy" : "cursor-crosshair",
+          tool === "text"
+            ? "cursor-text"
+            : tool === "image"
+              ? "cursor-copy"
+              : tool === "checkbox"
+                ? "cursor-crosshair"
+                : "cursor-pointer",
           loading && "opacity-70",
         )}
         style={{ aspectRatio: `${pageSize.width} / ${pageSize.height}` }}
