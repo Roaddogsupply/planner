@@ -74,23 +74,34 @@ async function openPdfBytes(
 
   onProgress?.({ phase: "opening", percent: 50 });
 
-  const loadingTask = pdfjs.getDocument({
-    data,
-    useWorkerFetch: false,
-  });
+  async function openDocument() {
+    const loadingTask = pdfjs.getDocument({
+      data,
+      useWorkerFetch: false,
+    });
+    return Promise.race([
+      loadingTask.promise,
+      new Promise<never>((_, reject) => {
+        window.setTimeout(
+          () => reject(new Error("Timed out opening planner PDF")),
+          120_000,
+        );
+      }),
+    ]);
+  }
 
-  const doc = await Promise.race([
-    loadingTask.promise,
-    new Promise<never>((_, reject) => {
-      window.setTimeout(
-        () => reject(new Error("Timed out opening planner PDF")),
-        120_000,
-      );
-    }),
-  ]);
-
-  onProgress?.({ phase: "opening", percent: 100 });
-  return doc;
+  try {
+    const doc = await openDocument();
+    onProgress?.({ phase: "opening", percent: 100 });
+    return doc;
+  } catch (firstError) {
+    // Safari and some mobile browsers hang when the module worker fails to start.
+    console.warn("PDF worker open failed, retrying on main thread:", firstError);
+    pdfjs.GlobalWorkerOptions.workerSrc = "";
+    const doc = await openDocument();
+    onProgress?.({ phase: "opening", percent: 100 });
+    return doc;
+  }
 }
 
 export async function loadPlannerDocument(

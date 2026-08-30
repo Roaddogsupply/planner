@@ -106,6 +106,15 @@ function hitTestLink(x: number, y: number, links: LinkOverlay[]) {
   return null;
 }
 
+async function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => {
+      window.setTimeout(() => resolve(fallback), ms);
+    }),
+  ]);
+}
+
 function hitTestImage(x: number, y: number, items: ImageAnnotation[]) {
   for (const item of [...items].reverse()) {
     if (
@@ -162,6 +171,9 @@ export function PdfPage({
     "default",
   );
   const [loading, setLoading] = useState(true);
+  const drawGenerationRef = useRef(0);
+  const calendarPageIndexRef = useRef(calendarPageIndex);
+  calendarPageIndexRef.current = calendarPageIndex;
   const dragState = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null);
   const resizeState = useRef<{
     id: string;
@@ -171,16 +183,18 @@ export function PdfPage({
   } | null>(null);
 
   useEffect(() => {
+    const generation = ++drawGenerationRef.current;
     let cancelled = false;
     let renderTask: { cancel: () => void; promise: Promise<void> } | null = null;
 
     async function drawPage() {
       setLoading(true);
       setCalendarLayout("default");
+      setLinks([]);
 
       try {
         const page = await pdf.getPage(pageNumber);
-        if (cancelled) return;
+        if (cancelled || generation !== drawGenerationRef.current) return;
 
         const viewport = page.getViewport({ scale });
         const canvas = canvasRef.current;
@@ -195,12 +209,17 @@ export function PdfPage({
 
         renderTask = page.render({ canvas, canvasContext: context, viewport });
         await renderTask.promise;
-        if (cancelled) return;
+        if (cancelled || generation !== drawGenerationRef.current) return;
+
+        // Unlock the page immediately after the PDF image renders. Link extraction
+        // can take several seconds on Safari — never block clicks while waiting.
+        setLoading(false);
 
         const pageLinks: LinkOverlay[] = [];
         const dayCells: CalendarDayCell[] = [];
         let fromDateLinkCount = 0;
         const compactCalendarPage = isCompactCalendarPage(pageNumber);
+        const index = calendarPageIndexRef.current;
 
         const pageText = (await page.getTextContent()).items
           .map((item) => ("str" in item ? item.str : ""))
@@ -208,7 +227,10 @@ export function PdfPage({
         const isDailySpread =
           pageText.includes("Breakfast") && pageText.includes("Snacks");
 
-        for (const annotation of await page.getAnnotations()) {
+        const rawAnnotations = await withTimeout(page.getAnnotations(), 20_000, []);
+        if (cancelled || generation !== drawGenerationRef.current) return;
+
+        for (const annotation of rawAnnotations) {
           if (annotation.subtype !== "Link") continue;
 
           const rect = annotation.rect as [number, number, number, number];
@@ -250,44 +272,40 @@ export function PdfPage({
           }
         }
 
-        if (!cancelled) {
-          const filteredLinks = pageLinks.filter(
-            (link) => !isSectionIndexOverlayLink(pageNumber, link),
-          );
+        if (cancelled || generation !== drawGenerationRef.current) return;
 
-          const dailyMiniCalCells = dayCells.filter(
-            (cell) => cell.x >= 25 && cell.x <= 50 && cell.y >= 18 && cell.y <= 32,
-          );
-          const isDailyMiniCal =
-            isDailySpread &&
-            fromDateLinkCount >= 35 &&
-            fromDateLinkCount <= 55 &&
-            dailyMiniCalCells.length >= 38;
-          const isWeekSpread =
-            !isDailySpread &&
-            fromDateLinkCount >= 35 &&
-            fromDateLinkCount <= 55 &&
-            (calendarPageIndex.weekPlannerPages.includes(pageNumber) ||
-              dayCells.some((cell) => cell.y >= 22 && cell.y <= 36));
-          const compactCalendar = compactCalendarPage || isDailyMiniCal || isWeekSpread;
-          const compactVariant = isDailyMiniCal ? "daily" : isWeekSpread ? "week" : "overview";
+        const filteredLinks = pageLinks.filter(
+          (link) => !isSectionIndexOverlayLink(pageNumber, link),
+        );
 
-          setLinks(filteredLinks);
-          setCalendarCells(
-            prepareCalendarCells(dayCells, compactCalendar, pageNumber, compactVariant),
-          );
-          setCalendarLayout(
-            compactCalendar
-              ? compactVariant
-              : "default",
-          );
-        }
+        const dailyMiniCalCells = dayCells.filter(
+          (cell) => cell.x >= 25 && cell.x <= 50 && cell.y >= 18 && cell.y <= 32,
+        );
+        const isDailyMiniCal =
+          isDailySpread &&
+          fromDateLinkCount >= 35 &&
+          fromDateLinkCount <= 55 &&
+          dailyMiniCalCells.length >= 38;
+        const isWeekSpread =
+          !isDailySpread &&
+          fromDateLinkCount >= 35 &&
+          fromDateLinkCount <= 55 &&
+          (index.weekPlannerPages.includes(pageNumber) ||
+            dayCells.some((cell) => cell.y >= 22 && cell.y <= 36));
+        const compactCalendar = compactCalendarPage || isDailyMiniCal || isWeekSpread;
+        const compactVariant = isDailyMiniCal ? "daily" : isWeekSpread ? "week" : "overview";
+
+        setLinks(filteredLinks);
+        setCalendarCells(
+          prepareCalendarCells(dayCells, compactCalendar, pageNumber, compactVariant),
+        );
+        setCalendarLayout(compactCalendar ? compactVariant : "default");
       } catch (renderError) {
-        if (!cancelled) {
+        if (!cancelled && generation === drawGenerationRef.current) {
           console.error(renderError);
         }
       } finally {
-        if (!cancelled) {
+        if (generation === drawGenerationRef.current) {
           setLoading(false);
         }
       }
@@ -299,7 +317,41 @@ export function PdfPage({
       cancelled = true;
       renderTask?.cancel();
     };
-  }, [pdf, pageNumber, scale, calendarPageIndex.dailyPlannerPages, calendarPageIndex.weekPlannerPages]);
+  }, [pdf, pageNumber, scale]);
+
+  // Week/daily calendar layout depends on the async page index — refresh once it is ready.
+  useEffect(() => {
+    const index = calendarPageIndexRef.current;
+    if (!isCalendarIndexReady(index) || links.length === 0) return;
+
+    const compactCalendarPage = isCompactCalendarPage(pageNumber);
+    if (compactCalendarPage) {
+      setCalendarLayout("overview");
+      return;
+    }
+
+    const fromDateLinkCount = links.filter((link) => link.uri?.includes("FROMDATE=")).length;
+    const isDailySpread = calendarCells.some(
+      (cell) => cell.x >= 25 && cell.x <= 50 && cell.y >= 18 && cell.y <= 32,
+    );
+    const isWeekSpread =
+      index.weekPlannerPages.includes(pageNumber) ||
+      (fromDateLinkCount >= 35 &&
+        fromDateLinkCount <= 55 &&
+        calendarCells.some((cell) => cell.y >= 22 && cell.y <= 36));
+
+    if (isDailySpread && fromDateLinkCount >= 35) {
+      setCalendarLayout("daily");
+    } else if (isWeekSpread) {
+      setCalendarLayout("week");
+    }
+  }, [
+    calendarPageIndex.dailyPlannerPages.length,
+    calendarPageIndex.weekPlannerPages.length,
+    pageNumber,
+    links.length,
+    calendarCells.length,
+  ]);
 
   const compactCalendar = calendarLayout !== "default";
   const isDailyMiniCal = calendarLayout === "daily";
@@ -389,6 +441,22 @@ export function PdfPage({
         }
       }
       window.open(link.uri, "_blank", "noopener,noreferrer");
+    }
+  };
+
+  const handleBrowsePointer = (clientX: number, clientY: number) => {
+    if (tool !== "navigate" || !containerRef.current || links.length === 0) return false;
+    const point = getPointerPercentFromClient(clientX, clientY);
+    const link = hitTestLink(point.x, point.y, links);
+    if (!link) return false;
+    handleLinkClick(link);
+    return true;
+  };
+
+  const handleBrowseOverlayClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (handleBrowsePointer(event.clientX, event.clientY)) {
+      event.preventDefault();
+      event.stopPropagation();
     }
   };
 
@@ -599,34 +667,20 @@ export function PdfPage({
               : tool === "checkbox"
                 ? "cursor-crosshair"
                 : "cursor-pointer",
-          loading && "opacity-70 pointer-events-none",
+          loading && "opacity-70",
         )}
-        style={{ aspectRatio: `${pageSize.width} / ${pageSize.height}` }}
+        style={{ aspectRatio: `${pageSize.width} / ${pageSize.height}`, touchAction: "manipulation" }}
         onClick={handlePageClick}
       >
-        <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
+        <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full" />
 
-        {browseMode &&
-          !loading &&
-          links.map((link, index) => (
-            <button
-              key={`pdf-link-${index}-${link.page ?? link.uri ?? "dest"}`}
-              type="button"
-              tabIndex={-1}
-              aria-label="Navigate"
-              className="absolute z-[8] m-0 cursor-pointer border-0 bg-transparent p-0"
-              style={{
-                left: `${link.x}%`,
-                top: `${link.y}%`,
-                width: `${link.width}%`,
-                height: `${link.height}%`,
-              }}
-              onClick={(event) => {
-                event.stopPropagation();
-                handleLinkClick(link);
-              }}
-            />
-          ))}
+        {browseMode && !loading && (
+          <div
+            className="absolute inset-0 z-[8] cursor-pointer"
+            aria-hidden="true"
+            onClick={handleBrowseOverlayClick}
+          />
+        )}
 
         {weekFocusY != null && (
           <div

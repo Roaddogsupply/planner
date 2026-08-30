@@ -159,6 +159,7 @@ export function SectionIndexOverlay({
     return (
       <div
         className="section-index-overlay absolute inset-0 z-[15]"
+        style={{ pointerEvents: "none" }}
         onClick={(event) => event.stopPropagation()}
       >
         <div
@@ -189,6 +190,7 @@ export function SectionIndexOverlay({
   return (
     <div
       className="section-index-overlay absolute inset-0 z-[15]"
+      style={{ pointerEvents: "none" }}
       onClick={(event) => event.stopPropagation()}
     >
       <div
