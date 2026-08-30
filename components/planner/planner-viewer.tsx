@@ -45,11 +45,8 @@ import {
 } from "@/lib/section-instances";
 import { getSectionForPage, isSectionTargetPage, type SectionIndexEntry } from "@/lib/section-indexes";
 import { SectionInstanceBar } from "@/components/planner/section-instance-bar";
-import {
-  buildCalendarPageIndex,
-  dateForPlannerPage,
-  type CalendarPageIndex,
-} from "@/lib/calendar-pages";
+import { buildCalendarPageIndex, dateForPlannerPage, type CalendarPageIndex } from "@/lib/calendar-pages";
+import { loadPlannerLinksFile } from "@/lib/planner-links";
 
 const EMPTY_CALENDAR_INDEX: CalendarPageIndex = {
   datePageMap: {},
@@ -121,6 +118,7 @@ export function PlannerViewer() {
 
   useEffect(() => {
     preloadDefaultFonts();
+    void loadPlannerLinksFile();
     const id = resolvePlannerId();
     setPlannerId(id);
     setRestoreLink(buildRestoreLink(id));
@@ -283,20 +281,13 @@ export function PlannerViewer() {
 
     let cancelled = false;
 
-    // Background calendar scan — wait until the visible page has had time to load links.
+    // Background calendar scan — wait until the visible page has loaded first.
     const timer = window.setTimeout(() => {
-      const idle =
-        typeof window.requestIdleCallback === "function"
-          ? new Promise<void>((resolve) => window.requestIdleCallback(() => resolve()))
-          : Promise.resolve();
-      void idle.then(() => {
+      void buildCalendarPageIndex(pdf).then((index) => {
         if (cancelled) return;
-        void buildCalendarPageIndex(pdf).then((index) => {
-          if (cancelled) return;
-          setCalendarPageIndex(index);
-        });
+        setCalendarPageIndex(index);
       });
-    }, 45_000);
+    }, 12_000);
 
     return () => {
       cancelled = true;

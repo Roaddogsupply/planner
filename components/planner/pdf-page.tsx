@@ -41,7 +41,7 @@ import {
 import { SectionIndexOverlay } from "@/components/planner/section-index-overlay";
 import { getSectionIndex, isSectionIndexOverlayLink, type SectionIndexEntry } from "@/lib/section-indexes";
 import { DEFAULT_INSTANCE_ID } from "@/lib/section-instances";
-import { isTouchDevice, loadPdfAnnotations } from "@/lib/pdf-task-queue";
+import { getStoredLinksForPage, loadPlannerLinksFile } from "@/lib/planner-links";
 
 type PdfPageProps = {
   pdf: PDFDocumentProxy;
@@ -83,14 +83,13 @@ function getAnnotationLinkUrl(annotation: { url?: string; unsafeUrl?: string }) 
   return annotation.url || annotation.unsafeUrl || null;
 }
 
-function expandLink(link: LinkOverlay, padding?: number): LinkOverlay {
-  const pad = padding ?? (typeof window !== "undefined" && isTouchDevice() ? 1.2 : 0.5);
+function expandLink(link: LinkOverlay, padding = 0.5): LinkOverlay {
   return {
     ...link,
-    x: Math.max(0, link.x - pad),
-    y: Math.max(0, link.y - pad),
-    width: link.width + pad * 2,
-    height: link.height + pad * 2,
+    x: Math.max(0, link.x - padding),
+    y: Math.max(0, link.y - padding),
+    width: link.width + padding * 2,
+    height: link.height + padding * 2,
   };
 }
 
@@ -164,8 +163,6 @@ export function PdfPage({
     "default",
   );
   const [loading, setLoading] = useState(true);
-  const [linksLoading, setLinksLoading] = useState(false);
-  const [linksRetryKey, setLinksRetryKey] = useState(0);
   const drawGenerationRef = useRef(0);
   const calendarPageIndexRef = useRef(calendarPageIndex);
   calendarPageIndexRef.current = calendarPageIndex;
@@ -185,9 +182,7 @@ export function PdfPage({
 
     async function drawPage() {
       setLoading(true);
-      setLinksLoading(true);
       setCalendarLayout("default");
-      setLinks([]);
 
       try {
         const page = await pdf.getPage(pageNumber);
@@ -208,9 +203,11 @@ export function PdfPage({
         await renderTask.promise;
         if (cancelled || generation !== drawGenerationRef.current) return;
 
-        // Unlock the page immediately after the PDF image renders. Link extraction
-        // can take several seconds on Safari — never block clicks while waiting.
-        setLoading(false);
+        const linkFile = await loadPlannerLinksFile();
+        const storedLinks = getStoredLinksForPage(linkFile, pageNumber).filter(
+          (link) => !isSectionIndexOverlayLink(pageNumber, link),
+        );
+        setLinks(storedLinks);
 
         const pageLinks: LinkOverlay[] = [];
         const dayCells: CalendarDayCell[] = [];
@@ -224,62 +221,39 @@ export function PdfPage({
         const isDailySpread =
           pageText.includes("Breakfast") && pageText.includes("Snacks");
 
-        const rawAnnotations = (await loadPdfAnnotations(() => page.getAnnotations())) as Array<{
-          subtype?: string;
-          rect?: number[];
-          dest?: unknown;
-          url?: string;
-          unsafeUrl?: string;
-        }>;
-        if (cancelled || generation !== drawGenerationRef.current) return;
+        try {
+          for (const annotation of await page.getAnnotations()) {
+            if (annotation.subtype !== "Link") continue;
 
-        for (const annotation of rawAnnotations) {
-          if (annotation.subtype !== "Link") continue;
+            const rect = annotation.rect as [number, number, number, number];
+            const [vx1, vy1] = viewport.convertToViewportPoint(rect[0], rect[1]);
+            const [vx2, vy2] = viewport.convertToViewportPoint(rect[2], rect[3]);
+            const left = Math.min(vx1, vx2);
+            const top = Math.min(vy1, vy2);
+            const width = Math.abs(vx2 - vx1);
+            const height = Math.abs(vy2 - vy1);
 
-          const rect = annotation.rect as [number, number, number, number];
-          const [vx1, vy1] = viewport.convertToViewportPoint(rect[0], rect[1]);
-          const [vx2, vy2] = viewport.convertToViewportPoint(rect[2], rect[3]);
-          const left = Math.min(vx1, vx2);
-          const top = Math.min(vy1, vy2);
-          const width = Math.abs(vx2 - vx1);
-          const height = Math.abs(vy2 - vy1);
+            const base: LinkOverlay = {
+              x: toPercent(left, viewport.width),
+              y: toPercent(top, viewport.height),
+              width: toPercent(width, viewport.width),
+              height: toPercent(height, viewport.height),
+            };
 
-          const base: LinkOverlay = {
-            x: toPercent(left, viewport.width),
-            y: toPercent(top, viewport.height),
-            width: toPercent(width, viewport.width),
-            height: toPercent(height, viewport.height),
-          };
-
-          const linkUrl = getAnnotationLinkUrl(annotation);
-
-          if (linkUrl) {
-            const calendarDay = parseCalendarDayFromUri(linkUrl, base, true);
-            if (calendarDay) {
-              dayCells.push(calendarDay);
-              fromDateLinkCount++;
-            }
-            pageLinks.push(expandLink({ ...base, uri: linkUrl }));
-          } else if (annotation.dest) {
-            const dest =
-              typeof annotation.dest === "string"
-                ? await pdf.getDestination(annotation.dest)
-                : annotation.dest;
-            if (dest) {
-              const ref = (dest as unknown[])[0] as Parameters<PDFDocumentProxy["getPageIndex"]>[0];
-              if (ref) {
-                const targetPage = (await pdf.getPageIndex(ref)) + 1;
-                pageLinks.push(expandLink({ ...base, page: targetPage }));
+            const linkUrl = getAnnotationLinkUrl(annotation);
+            if (linkUrl) {
+              const calendarDay = parseCalendarDayFromUri(linkUrl, base, true);
+              if (calendarDay) {
+                dayCells.push(calendarDay);
+                fromDateLinkCount++;
               }
             }
           }
+        } catch (annotationError) {
+          console.warn("Calendar overlay links unavailable for this page:", annotationError);
         }
 
         if (cancelled || generation !== drawGenerationRef.current) return;
-
-        const filteredLinks = pageLinks.filter(
-          (link) => !isSectionIndexOverlayLink(pageNumber, link),
-        );
 
         const dailyMiniCalCells = dayCells.filter(
           (cell) => cell.x >= 25 && cell.x <= 50 && cell.y >= 18 && cell.y <= 32,
@@ -298,21 +272,17 @@ export function PdfPage({
         const compactCalendar = compactCalendarPage || isDailyMiniCal || isWeekSpread;
         const compactVariant = isDailyMiniCal ? "daily" : isWeekSpread ? "week" : "overview";
 
-        setLinks(filteredLinks);
         setCalendarCells(
           prepareCalendarCells(dayCells, compactCalendar, pageNumber, compactVariant),
         );
         setCalendarLayout(compactCalendar ? compactVariant : "default");
-        setLinksLoading(false);
       } catch (renderError) {
         if (!cancelled && generation === drawGenerationRef.current) {
           console.error(renderError);
-          setLinksLoading(false);
         }
       } finally {
         if (generation === drawGenerationRef.current) {
           setLoading(false);
-          setLinksLoading(false);
         }
       }
     }
@@ -323,7 +293,7 @@ export function PdfPage({
       cancelled = true;
       renderTask?.cancel();
     };
-  }, [pdf, pageNumber, scale, linksRetryKey]);
+  }, [pdf, pageNumber, scale]);
 
   // Week/daily calendar layout depends on the async page index — refresh once it is ready.
   useEffect(() => {
@@ -383,6 +353,10 @@ export function PdfPage({
     getPointerPercentFromClient(event.clientX, event.clientY);
 
   const handleLinkClick = (link: LinkOverlay) => {
+    const now = Date.now();
+    if (now - lastLinkNavAtRef.current < 400) return;
+    lastLinkNavAtRef.current = now;
+
     if (link.page) {
       if (
         needsCalendarSidebarOverride(pageNumber, calendarPageIndex) &&
@@ -450,30 +424,8 @@ export function PdfPage({
     }
   };
 
-  const navigateLink = (link: LinkOverlay) => {
-    const now = Date.now();
-    if (now - lastLinkNavAtRef.current < 400) return;
-    lastLinkNavAtRef.current = now;
-    handleLinkClick(link);
-  };
-
-  const handleBrowsePointer = (clientX: number, clientY: number) => {
-    if (tool !== "navigate" || !containerRef.current || links.length === 0) return false;
-    const point = getPointerPercentFromClient(clientX, clientY);
-    const link = hitTestLink(point.x, point.y, links);
-    if (!link) return false;
-    navigateLink(link);
-    return true;
-  };
-
-  const handleBrowsePointerUp = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (tool !== "navigate" || links.length === 0) return;
-    handleBrowsePointer(event.clientX, event.clientY);
-  };
-
   const handlePageClick = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (!containerRef.current) return;
-    if (tool === "navigate") return;
 
     const point = getPointerPercent(event);
     const link = hitTestLink(point.x, point.y, links);
@@ -481,6 +433,8 @@ export function PdfPage({
       handleLinkClick(link);
       return;
     }
+
+    if (tool === "navigate") return;
 
     const pageCheckboxes = annotations.filter(
       (item): item is CheckboxAnnotation =>
@@ -667,25 +621,6 @@ export function PdfPage({
 
   return (
     <div className="relative mx-auto w-full" style={{ maxWidth: pageSize.width }}>
-      {browseMode && linksLoading && !loading && (
-        <p className="text-muted-foreground mb-2 text-center text-xs">
-          Preparing clickable links…
-        </p>
-      )}
-      {browseMode && !loading && !linksLoading && links.length === 0 && (
-        <div className="mb-2 text-center">
-          <p className="text-muted-foreground text-xs">
-            Links are not ready yet on this page.
-          </p>
-          <button
-            type="button"
-            className="text-primary mt-1 text-xs underline"
-            onClick={() => setLinksRetryKey((key) => key + 1)}
-          >
-            Tap to retry
-          </button>
-        </div>
-      )}
       <div
         ref={containerRef}
         className={cn(
@@ -700,38 +635,9 @@ export function PdfPage({
           loading && "opacity-70",
         )}
         style={{ aspectRatio: `${pageSize.width} / ${pageSize.height}`, touchAction: "manipulation" }}
-        onPointerUp={handleBrowsePointerUp}
         onClick={handlePageClick}
       >
-        <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full" />
-
-        {browseMode &&
-          !loading &&
-          links.map((link, index) => (
-            <button
-              key={`pdf-link-${linksRetryKey}-${index}-${link.page ?? link.uri ?? "dest"}`}
-              type="button"
-              tabIndex={-1}
-              aria-label="Navigate"
-              className="planner-link-hit absolute z-[8] m-0 cursor-pointer border-0 bg-transparent p-0"
-              style={{
-                left: `${link.x}%`,
-                top: `${link.y}%`,
-                width: `${link.width}%`,
-                height: `${link.height}%`,
-              }}
-              onPointerUp={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                navigateLink(link);
-              }}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                navigateLink(link);
-              }}
-            />
-          ))}
+        <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
 
         {weekFocusY != null && (
           <div
