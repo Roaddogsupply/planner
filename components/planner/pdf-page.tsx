@@ -25,12 +25,12 @@ import {
   collectDayCellsFromLinks,
   parseCalendarDayFromUri,
   prepareCalendarCells,
+  resolveCalendarOverlayLayout,
 } from "@/lib/calendar-cells";
 import type { CalendarDayCell, CalendarEvent } from "@/lib/calendar-types";
 import { imageHeightForWidth, imageWidthForHeight } from "@/lib/image-utils";
 import { CalendarOverlay } from "@/components/planner/calendar-overlay";
 import {
-  isCompactCalendarPage,
   isCalendarSidebarTab,
   getCalendarSidebarTabIndex,
   isCalendarIndexReady,
@@ -219,8 +219,6 @@ export function PdfPage({
         setLinks(storedLinks);
 
         const dayCells = collectDayCellsFromLinks(storedLinks);
-        let fromDateLinkCount = dayCells.length;
-        const compactCalendarPage = isCompactCalendarPage(pageNumber);
         const index = calendarPageIndexRef.current;
 
         const pageText = (await page.getTextContent()).items
@@ -255,7 +253,6 @@ export function PdfPage({
                 const calendarDay = parseCalendarDayFromUri(linkUrl, base, true);
                 if (calendarDay) {
                   dayCells.push(calendarDay);
-                  fromDateLinkCount++;
                 }
               }
             }
@@ -266,25 +263,22 @@ export function PdfPage({
 
         if (cancelled || generation !== drawGenerationRef.current) return;
 
-        const dailyMiniCalCells = dayCells.filter(
-          (cell) => cell.x >= 25 && cell.x <= 50 && cell.y >= 18 && cell.y <= 32,
+        const { compact: compactCalendar, variant: compactVariant } = resolveCalendarOverlayLayout(
+          pageNumber,
+          dayCells,
+          {
+            isDailySpreadText: isDailySpread,
+            weekPlannerPages: index.weekPlannerPages,
+          },
         );
-        const isDailyMiniCal =
-          isDailySpread &&
-          fromDateLinkCount >= 35 &&
-          fromDateLinkCount <= 55 &&
-          dailyMiniCalCells.length >= 38;
-        const isWeekSpread =
-          !isDailySpread &&
-          fromDateLinkCount >= 35 &&
-          fromDateLinkCount <= 55 &&
-          (index.weekPlannerPages.includes(pageNumber) ||
-            dayCells.some((cell) => cell.y >= 22 && cell.y <= 36));
-        const compactCalendar = compactCalendarPage || isDailyMiniCal || isWeekSpread;
-        const compactVariant = isDailyMiniCal ? "daily" : isWeekSpread ? "week" : "overview";
 
         setCalendarCells(
-          prepareCalendarCells(dayCells, compactCalendar, pageNumber, compactVariant),
+          prepareCalendarCells(
+            dayCells,
+            compactCalendar,
+            pageNumber,
+            compactVariant === "default" ? "overview" : compactVariant,
+          ),
         );
         setCalendarLayout(compactCalendar ? compactVariant : "default");
       } catch (renderError) {
@@ -314,23 +308,22 @@ export function PdfPage({
     const dayCells = collectDayCellsFromLinks(links);
     if (dayCells.length === 0) return;
 
-    const compactCalendarPage = isCompactCalendarPage(pageNumber);
-    const fromDateLinkCount = dayCells.length;
-    const dailyMiniCalCells = dayCells.filter(
-      (cell) => cell.x >= 25 && cell.x <= 50 && cell.y >= 18 && cell.y <= 32,
+    const { compact: compactCalendar, variant: compactVariant } = resolveCalendarOverlayLayout(
+      pageNumber,
+      dayCells,
+      {
+        isDailySpreadText: index.dailyPlannerPages.includes(pageNumber),
+        weekPlannerPages: index.weekPlannerPages,
+      },
     );
-    const isDailySpread = dailyMiniCalCells.length >= 38;
-    const isWeekSpread =
-      !isDailySpread &&
-      fromDateLinkCount >= 35 &&
-      fromDateLinkCount <= 55 &&
-      (index.weekPlannerPages.includes(pageNumber) ||
-        dayCells.some((cell) => cell.y >= 22 && cell.y <= 36));
-    const compactCalendar = compactCalendarPage || isDailySpread || isWeekSpread;
-    const compactVariant = isDailySpread ? "daily" : isWeekSpread ? "week" : "overview";
 
     setCalendarCells(
-      prepareCalendarCells(dayCells, compactCalendar, pageNumber, compactVariant),
+      prepareCalendarCells(
+        dayCells,
+        compactCalendar,
+        pageNumber,
+        compactVariant === "default" ? "overview" : compactVariant,
+      ),
     );
     setCalendarLayout(compactCalendar ? compactVariant : "default");
   }, [

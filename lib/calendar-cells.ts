@@ -1,4 +1,10 @@
 import type { CalendarDayCell } from "@/lib/calendar-types";
+import { isCompactCalendarPage } from "@/lib/calendar-pages";
+
+export type CalendarOverlayLayout = {
+  compact: boolean;
+  variant: "overview" | "daily" | "week" | "default";
+};
 
 type LinkOverlay = {
   x: number;
@@ -19,6 +25,42 @@ export function collectDayCellsFromLinks(links: LinkOverlay[]): CalendarDayCell[
   }
 
   return dayCells;
+}
+
+/** Pick compact vs title overlay and which mini-calendar band to use. */
+export function resolveCalendarOverlayLayout(
+  pageNumber: number,
+  dayCells: CalendarDayCell[],
+  options?: {
+    /** Daily spread detected from page text (Breakfast + Snacks). */
+    isDailySpreadText?: boolean;
+    weekPlannerPages?: number[];
+  },
+): CalendarOverlayLayout {
+  if (isCompactCalendarPage(pageNumber)) {
+    return { compact: true, variant: "overview" };
+  }
+
+  const fromDateLinkCount = dayCells.length;
+  const dailyMiniCalCells = dayCells.filter(
+    (cell) => cell.x >= 25 && cell.x <= 50 && cell.y >= 18 && cell.y <= 32,
+  );
+  const isDailyMiniCal =
+    !!options?.isDailySpreadText &&
+    fromDateLinkCount >= 35 &&
+    fromDateLinkCount <= 55 &&
+    dailyMiniCalCells.length >= 38;
+
+  const isWeekSpread =
+    !isDailyMiniCal &&
+    fromDateLinkCount >= 35 &&
+    fromDateLinkCount <= 55 &&
+    ((options?.weekPlannerPages?.includes(pageNumber) ?? false) ||
+      dayCells.some((cell) => cell.y >= 22 && cell.y <= 36));
+
+  if (isDailyMiniCal) return { compact: true, variant: "daily" };
+  if (isWeekSpread) return { compact: true, variant: "week" };
+  return { compact: false, variant: "default" };
 }
 
 /** Month centers on compact calendar spreads — used to pick the right mini calendar. */
