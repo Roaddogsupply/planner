@@ -6,6 +6,13 @@ export const YEAR_OVERVIEW_PAGES = [121, 122] as const;
 /** Three-month quarterly spreads — same compact purple date boxes. */
 export const QUARTERLY_PLANNER_PAGES = [124, 125, 126, 127] as const;
 
+/** Left sidebar month tabs on monthly spreads (Jan–Dec). */
+export const MONTHLY_TAB_PAGES = [
+  129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140,
+] as const;
+
+const MONTHLY_PLANNER_PAGES = MONTHLY_TAB_PAGES;
+
 const MONTH_NAMES = [
   "January",
   "February",
@@ -21,9 +28,17 @@ const MONTH_NAMES = [
   "December",
 ] as const;
 
+const CALENDAR_TAB_Y_ANCHORS = [7.6, 14.1, 20.5, 27, 33.5, 40, 46.4, 52.9, 59.4, 65.8, 72.3, 78.8, 85.3];
+
 export type CalendarPageIndex = {
   datePageMap: Record<string, number>;
+  dailyPageDates: Record<number, string>;
+  weekPageMap: Record<string, number>;
+  monthPageMap: Record<string, number>;
+  yearPageMap: Record<string, number>;
   dailyPlannerPages: number[];
+  weekPlannerPages: number[];
+  monthlyPlannerPages: number[];
 };
 
 export function isYearOverviewPage(pageNumber: number) {
@@ -34,6 +49,10 @@ export function isQuarterlyPlannerPage(pageNumber: number) {
   return QUARTERLY_PLANNER_PAGES.includes(
     pageNumber as (typeof QUARTERLY_PLANNER_PAGES)[number],
   );
+}
+
+export function isMonthlyPlannerPage(pageNumber: number) {
+  return MONTHLY_PLANNER_PAGES.includes(pageNumber as (typeof MONTHLY_PLANNER_PAGES)[number]);
 }
 
 /** Mini-calendar spreads that tint dates purple instead of listing titles. */
@@ -77,13 +96,88 @@ function countFromDateLinks(annotations: Array<{ subtype?: string; url?: string;
   return count;
 }
 
+function collectFromDates(annotations: Array<{ subtype?: string; url?: string; unsafeUrl?: string }>) {
+  const dates = new Set<string>();
+
+  for (const annotation of annotations) {
+    if (annotation.subtype !== "Link") continue;
+    const uri = annotation.url || annotation.unsafeUrl || "";
+    const date = parseDateFromCalendarUri(uri);
+    if (date) dates.add(date);
+  }
+
+  return dates;
+}
+
+export function isCalendarSidebarTab(link: { x: number; y: number; width: number }) {
+  return link.x < 6 && link.width < 5 && link.y >= 6 && link.y <= 90;
+}
+
+export function getCalendarSidebarTabIndex(link: { y: number }) {
+  let bestIndex = 0;
+  let bestDistance = Infinity;
+
+  for (let index = 0; index < CALENDAR_TAB_Y_ANCHORS.length; index++) {
+    const distance = Math.abs(link.y - CALENDAR_TAB_Y_ANCHORS[index]);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = index;
+    }
+  }
+
+  return bestIndex;
+}
+
+export function needsCalendarSidebarOverride(pageNumber: number, index: CalendarPageIndex) {
+  return (
+    index.dailyPlannerPages.includes(pageNumber) ||
+    index.weekPlannerPages.includes(pageNumber)
+  );
+}
+
+/** Fix day/week sidebar tabs that point at random daily pages in the PDF. */
+export function resolveCalendarSidebarNavigation(
+  tabIndex: number,
+  currentPage: number,
+  activeDate: string | null,
+  index: CalendarPageIndex,
+): number | null {
+  if (!needsCalendarSidebarOverride(currentPage, index)) {
+    return null;
+  }
+
+  if (tabIndex === 0) {
+    if (!activeDate) {
+      return index.yearPageMap["2026"] ?? YEAR_OVERVIEW_PAGES[0];
+    }
+
+    if (index.dailyPlannerPages.includes(currentPage)) {
+      return index.weekPageMap[activeDate] ?? null;
+    }
+
+    if (index.weekPlannerPages.includes(currentPage)) {
+      return index.monthPageMap[activeDate.slice(0, 7)] ?? null;
+    }
+  }
+
+  if (tabIndex >= 1 && tabIndex <= 12) {
+    return MONTHLY_TAB_PAGES[tabIndex - 1];
+  }
+
+  return null;
+}
+
 /**
- * Maps each calendar date to its daily planner spread.
- * Uses the printed day header ("12 Wed August 2026") rather than sidebar mini-cal links.
+ * Maps calendar dates to daily/week/month/year spreads.
+ * Daily pages use the printed header; week/month maps come from PDF link grids.
  */
 export async function buildCalendarPageIndex(pdf: PDFDocumentProxy): Promise<CalendarPageIndex> {
   const datePageMap = new Map<string, number>();
+  const dailyPageDates: Record<number, string> = {};
+  const weekPageMap = new Map<string, number>();
+  const monthPageMap = new Map<string, number>();
   const dailyPlannerPages = new Set<number>();
+  const weekPlannerPages = new Set<number>();
 
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
     if (isCompactCalendarPage(pageNumber)) continue;
@@ -92,24 +186,51 @@ export async function buildCalendarPageIndex(pdf: PDFDocumentProxy): Promise<Cal
     const annotations = await page.getAnnotations();
     const fromDateCount = countFromDateLinks(annotations);
 
-    // Daily spreads have a small month mini-calendar (~42 links).
-    if (fromDateCount < 35 || fromDateCount > 55) continue;
+    if (fromDateCount >= 35 && fromDateCount <= 55) {
+      const text = (await page.getTextContent()).items
+        .map((item) => ("str" in item ? item.str : ""))
+        .join(" ");
 
-    const text = (await page.getTextContent()).items
-      .map((item) => ("str" in item ? item.str : ""))
-      .join(" ");
-    if (!isDailyPlannerSpread(text)) continue;
+      if (isDailyPlannerSpread(text)) {
+        const date = extractDailyPageDate(text);
+        if (date) {
+          datePageMap.set(date, pageNumber);
+          dailyPageDates[pageNumber] = date;
+          dailyPlannerPages.add(pageNumber);
+          continue;
+        }
+      }
 
-    const date = extractDailyPageDate(text);
-    if (!date) continue;
+      if (!text.includes("Breakfast")) {
+        weekPlannerPages.add(pageNumber);
+        for (const date of collectFromDates(annotations)) {
+          const existing = weekPageMap.get(date);
+          if (existing === undefined || pageNumber < existing) {
+            weekPageMap.set(date, pageNumber);
+          }
+        }
+      }
+    }
 
-    datePageMap.set(date, pageNumber);
-    dailyPlannerPages.add(pageNumber);
+    if (isMonthlyPlannerPage(pageNumber)) {
+      for (const date of collectFromDates(annotations)) {
+        const monthKey = date.slice(0, 7);
+        if (!monthPageMap.has(monthKey)) {
+          monthPageMap.set(monthKey, pageNumber);
+        }
+      }
+    }
   }
 
   return {
     datePageMap: Object.fromEntries(datePageMap),
+    dailyPageDates,
+    weekPageMap: Object.fromEntries(weekPageMap),
+    monthPageMap: Object.fromEntries(monthPageMap),
+    yearPageMap: { "2026": YEAR_OVERVIEW_PAGES[0], "2027": YEAR_OVERVIEW_PAGES[1] },
     dailyPlannerPages: [...dailyPlannerPages],
+    weekPlannerPages: [...weekPlannerPages],
+    monthlyPlannerPages: [...MONTHLY_PLANNER_PAGES],
   };
 }
 
@@ -124,4 +245,8 @@ export function resolveCalendarDayPage(
   datePageMap: Record<string, number>,
 ) {
   return datePageMap[date] ?? null;
+}
+
+export function dateForPlannerPage(pageNumber: number, index: CalendarPageIndex) {
+  return index.dailyPageDates[pageNumber] ?? null;
 }

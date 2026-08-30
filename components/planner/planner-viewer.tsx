@@ -45,7 +45,22 @@ import {
 } from "@/lib/section-instances";
 import { getSectionForPage, isSectionTargetPage, type SectionIndexEntry } from "@/lib/section-indexes";
 import { SectionInstanceBar } from "@/components/planner/section-instance-bar";
-import { buildCalendarPageIndex } from "@/lib/calendar-pages";
+import {
+  buildCalendarPageIndex,
+  dateForPlannerPage,
+  type CalendarPageIndex,
+} from "@/lib/calendar-pages";
+
+const EMPTY_CALENDAR_INDEX: CalendarPageIndex = {
+  datePageMap: {},
+  dailyPageDates: {},
+  weekPageMap: {},
+  monthPageMap: {},
+  yearPageMap: { "2026": 121, "2027": 122 },
+  dailyPlannerPages: [],
+  weekPlannerPages: [],
+  monthlyPlannerPages: [],
+};
 
 function formatLoadingMessage(progress: LoadProgress | null) {
   if (!progress) return "Starting planner…";
@@ -91,8 +106,8 @@ export function PlannerViewer() {
   const [calendarSyncing, setCalendarSyncing] = useState(false);
   const [calendarLastSynced, setCalendarLastSynced] = useState<string | null>(null);
   const [calendarSyncError, setCalendarSyncError] = useState<string | null>(null);
-  const [calendarDatePageMap, setCalendarDatePageMap] = useState<Record<string, number>>({});
-  const [dailyPlannerPages, setDailyPlannerPages] = useState<number[]>([]);
+  const [calendarPageIndex, setCalendarPageIndex] = useState<CalendarPageIndex>(EMPTY_CALENDAR_INDEX);
+  const [activeCalendarDate, setActiveCalendarDate] = useState<string | null>(null);
   const [pendingImage, setPendingImage] = useState<{
     src: string;
     width: number;
@@ -267,8 +282,7 @@ export function PlannerViewer() {
 
     void buildCalendarPageIndex(pdf).then((index) => {
       if (cancelled) return;
-      setCalendarDatePageMap(index.datePageMap);
-      setDailyPlannerPages(index.dailyPlannerPages);
+      setCalendarPageIndex(index);
     });
 
     return () => {
@@ -395,14 +409,29 @@ export function PlannerViewer() {
   }, [sectionInstances]);
 
   const navigateToSection = useCallback(
-    (targetPage: number, instanceId?: string) => {
+    (targetPage: number, instanceId?: string, calendarDate?: string) => {
       setPage(targetPage);
+      if (calendarDate) {
+        setActiveCalendarDate(calendarDate);
+      } else {
+        const pageDate = dateForPlannerPage(targetPage, calendarPageIndex);
+        if (pageDate) {
+          setActiveCalendarDate(pageDate);
+        }
+      }
       if (instanceId) {
         setActiveSectionInstances((current) => ({ ...current, [targetPage]: instanceId }));
       }
     },
-    [],
+    [calendarPageIndex],
   );
+
+  useEffect(() => {
+    const pageDate = dateForPlannerPage(page, calendarPageIndex);
+    if (pageDate) {
+      setActiveCalendarDate(pageDate);
+    }
+  }, [page, calendarPageIndex]);
 
   const handleAddSectionCopy = useCallback(
     (section: SectionIndexEntry) => {
@@ -720,8 +749,8 @@ export function PlannerViewer() {
               onSelectAnnotation={setSelectedId}
               onToggleCheckbox={handleToggleCheckbox}
               calendarEvents={calendarEvents}
-              calendarDatePageMap={calendarDatePageMap}
-              dailyPlannerPages={dailyPlannerPages}
+              calendarPageIndex={calendarPageIndex}
+              activeCalendarDate={activeCalendarDate}
               pendingImage={pendingImage}
               onPendingImagePlaced={() => setPendingImage(null)}
             />

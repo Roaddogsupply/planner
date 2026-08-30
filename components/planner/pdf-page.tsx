@@ -25,7 +25,16 @@ import { parseCalendarDayFromUri, prepareCalendarCells } from "@/lib/calendar-ce
 import type { CalendarDayCell, CalendarEvent } from "@/lib/calendar-types";
 import { imageHeightForWidth, imageWidthForHeight } from "@/lib/image-utils";
 import { CalendarOverlay } from "@/components/planner/calendar-overlay";
-import { isCompactCalendarPage, parseDateFromCalendarUri, resolveCalendarDayPage } from "@/lib/calendar-pages";
+import {
+  isCompactCalendarPage,
+  isCalendarSidebarTab,
+  getCalendarSidebarTabIndex,
+  needsCalendarSidebarOverride,
+  parseDateFromCalendarUri,
+  resolveCalendarDayPage,
+  resolveCalendarSidebarNavigation,
+  type CalendarPageIndex,
+} from "@/lib/calendar-pages";
 import { SectionIndexOverlay } from "@/components/planner/section-index-overlay";
 import { getSectionIndex, isSectionIndexOverlayLink, type SectionIndexEntry } from "@/lib/section-indexes";
 import { DEFAULT_INSTANCE_ID } from "@/lib/section-instances";
@@ -40,15 +49,15 @@ type PdfPageProps = {
   textStyle: TextStyle;
   activeInstanceId: string;
   sectionInstanceCounts: Record<number, number>;
-  onPageNavigate: (page: number, instanceId?: string) => void;
+  onPageNavigate: (page: number, instanceId?: string, calendarDate?: string) => void;
   onAddSectionCopy: (section: SectionIndexEntry) => void;
   onAddAnnotation: (annotation: PlannerAnnotation) => void;
   onUpdateAnnotation: (id: string, patch: Record<string, unknown>) => void;
   onSelectAnnotation: (id: string | null) => void;
   onToggleCheckbox: (id: string) => void;
   calendarEvents: CalendarEvent[];
-  calendarDatePageMap: Record<string, number>;
-  dailyPlannerPages: number[];
+  calendarPageIndex: CalendarPageIndex;
+  activeCalendarDate: string | null;
   pendingImage: { src: string; width: number; height: number; aspectRatio: number } | null;
   onPendingImagePlaced: () => void;
 };
@@ -133,8 +142,8 @@ export function PdfPage({
   onSelectAnnotation,
   onToggleCheckbox,
   calendarEvents,
-  calendarDatePageMap,
-  dailyPlannerPages,
+  calendarPageIndex,
+  activeCalendarDate,
   pendingImage,
   onPendingImagePlaced,
   activeInstanceId,
@@ -182,7 +191,7 @@ export function PdfPage({
 
         const pageLinks: LinkOverlay[] = [];
         const dayCells: CalendarDayCell[] = [];
-        const isDailyMiniCal = dailyPlannerPages.includes(pageNumber);
+        const isDailyMiniCal = calendarPageIndex.dailyPlannerPages.includes(pageNumber);
         const compactCalendar = isCompactCalendarPage(pageNumber) || isDailyMiniCal;
         const compactVariant = isDailyMiniCal ? "daily" : "overview";
         for (const annotation of await page.getAnnotations()) {
@@ -252,7 +261,7 @@ export function PdfPage({
       cancelled = true;
       renderTask?.cancel();
     };
-  }, [pdf, pageNumber, scale, dailyPlannerPages]);
+  }, [pdf, pageNumber, scale, calendarPageIndex.dailyPlannerPages]);
 
   const getPointerPercent = (event: ReactMouseEvent) => {
     const rect = containerRef.current!.getBoundingClientRect();
@@ -264,6 +273,23 @@ export function PdfPage({
 
   const handleLinkClick = (link: LinkOverlay) => {
     if (link.page) {
+      if (
+        needsCalendarSidebarOverride(pageNumber, calendarPageIndex) &&
+        isCalendarSidebarTab(link)
+      ) {
+        const tabIndex = getCalendarSidebarTabIndex(link);
+        const overridePage = resolveCalendarSidebarNavigation(
+          tabIndex,
+          pageNumber,
+          activeCalendarDate,
+          calendarPageIndex,
+        );
+        if (overridePage) {
+          onPageNavigate(overridePage);
+          return;
+        }
+      }
+
       onPageNavigate(link.page);
       return;
     }
@@ -272,9 +298,9 @@ export function PdfPage({
       if (link.uri.startsWith("shortcuts://")) {
         const date = parseDateFromCalendarUri(link.uri);
         if (date) {
-          const targetPage = resolveCalendarDayPage(date, calendarDatePageMap);
+          const targetPage = resolveCalendarDayPage(date, calendarPageIndex.datePageMap);
           if (targetPage) {
-            onPageNavigate(targetPage);
+            onPageNavigate(targetPage, undefined, date);
             return;
           }
         }
@@ -495,11 +521,11 @@ export function PdfPage({
         <CalendarOverlay
           cells={calendarCells}
           events={calendarEvents}
-          compact={isCompactCalendarPage(pageNumber) || dailyPlannerPages.includes(pageNumber)}
-          compactStyle={dailyPlannerPages.includes(pageNumber) ? "dot" : "box"}
+          compact={isCompactCalendarPage(pageNumber) || calendarPageIndex.dailyPlannerPages.includes(pageNumber)}
+          compactStyle={calendarPageIndex.dailyPlannerPages.includes(pageNumber) ? "dot" : "box"}
           onDateNavigate={(date) => {
-            const targetPage = resolveCalendarDayPage(date, calendarDatePageMap);
-            if (targetPage) onPageNavigate(targetPage);
+            const targetPage = resolveCalendarDayPage(date, calendarPageIndex.datePageMap);
+            if (targetPage) onPageNavigate(targetPage, undefined, date);
           }}
         />
 
