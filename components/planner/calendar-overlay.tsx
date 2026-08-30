@@ -1,5 +1,5 @@
 import type { CalendarDayCell, CalendarEvent } from "@/lib/calendar-types";
-import { eventsForDate } from "@/lib/calendar-storage";
+import { eventsForDate, eventsStartingOnDate } from "@/lib/calendar-storage";
 
 type CalendarOverlayProps = {
   cells: CalendarDayCell[];
@@ -30,7 +30,7 @@ export function CalendarOverlay({
     return (
       <div className="pointer-events-none absolute inset-0 z-20">
         {uniqueCellsByDate(cells).map((cell) => {
-          const dayEvents = eventsForDate(events, cell.date);
+          const dayEvents = eventsStartingOnDate(events, cell.date);
           if (!dayEvents.length) return null;
 
           const titles = dayEvents.map((event) => event.summary).join(", ");

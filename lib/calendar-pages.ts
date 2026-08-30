@@ -36,6 +36,8 @@ export type CalendarPageIndex = {
   weekPageMap: Record<string, number>;
   /** Week spread whose top row begins on this Sunday (YYYY-MM-DD). */
   weekPageByStart: Record<string, number>;
+  /** Row Y position (page %) for that week's Sunday on its spread. */
+  weekRowByStart: Record<string, number>;
   monthPageMap: Record<string, number>;
   yearPageMap: Record<string, number>;
   dailyPlannerPages: number[];
@@ -92,12 +94,20 @@ export function resolveWeekPage(date: string, index: CalendarPageIndex) {
   return index.weekPageMap[date] ?? index.weekPageMap[weekStart] ?? null;
 }
 
+export function resolveWeekRowY(date: string, index: CalendarPageIndex) {
+  const weekStart = sundayOfWeek(date);
+  return index.weekRowByStart?.[weekStart] ?? null;
+}
+
 export function calendarDateContext(
   pageNumber: number,
   activeDate: string | null,
   index: CalendarPageIndex,
 ) {
-  return activeDate ?? dateForPlannerPage(pageNumber, index);
+  // The printed header on daily pages is the source of truth for zoom-out navigation.
+  const pageDate = dateForPlannerPage(pageNumber, index);
+  if (pageDate) return pageDate;
+  return activeDate;
 }
 
 function extractDailyPageDate(text: string) {
@@ -252,6 +262,7 @@ export async function buildCalendarPageIndex(pdf: PDFDocumentProxy): Promise<Cal
   const dailyPageDates: Record<number, string> = {};
   const weekPageMap = new Map<string, number>();
   const weekPageByStart = new Map<string, { page: number; rowY: number }>();
+  const weekRowByStart: Record<string, number> = {};
   const monthPageMap: Record<string, number> = {};
   const dailyPlannerPages = new Set<number>();
   const weekPlannerPages = new Set<number>();
@@ -296,6 +307,7 @@ export async function buildCalendarPageIndex(pdf: PDFDocumentProxy): Promise<Cal
             (row.y === existing.rowY && pageNumber < existing.page)
           ) {
             weekPageByStart.set(row.sunday, { page: pageNumber, rowY: row.y });
+            weekRowByStart[row.sunday] = row.y;
           }
         }
 
@@ -316,6 +328,7 @@ export async function buildCalendarPageIndex(pdf: PDFDocumentProxy): Promise<Cal
     weekPageByStart: Object.fromEntries(
       [...weekPageByStart.entries()].map(([sunday, entry]) => [sunday, entry.page]),
     ),
+    weekRowByStart,
     monthPageMap,
     yearPageMap: { "2026": YEAR_OVERVIEW_PAGES[0], "2027": YEAR_OVERVIEW_PAGES[1] },
     dailyPlannerPages: [...dailyPlannerPages],

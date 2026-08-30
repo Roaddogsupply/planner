@@ -56,6 +56,14 @@ export function eventsForDate(events: CalendarEvent[], date: string) {
   });
 }
 
+/** Compact overlays (dots/boxes) only mark the day an event starts. */
+export function eventsStartingOnDate(events: CalendarEvent[], date: string) {
+  return events.filter((event) => {
+    const startDate = event.startDate ?? event.start.slice(0, 10);
+    return startDate === date;
+  });
+}
+
 export function eventsOnPage(events: CalendarEvent[], cells: { date: string }[]) {
   const dates = new Set(cells.map((cell) => cell.date));
   return events.filter((event) => {

@@ -35,6 +35,7 @@ import {
   parseDateFromCalendarUri,
   resolveCalendarDayPage,
   resolveCalendarSidebarNavigation,
+  resolveWeekRowY,
   type CalendarPageIndex,
 } from "@/lib/calendar-pages";
 import { SectionIndexOverlay } from "@/components/planner/section-index-overlay";
@@ -152,10 +153,14 @@ export function PdfPage({
   sectionInstanceCounts,
 }: PdfPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const weekFocusRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [pageSize, setPageSize] = useState({ width: 816, height: 595 });
   const [links, setLinks] = useState<LinkOverlay[]>([]);
   const [calendarCells, setCalendarCells] = useState<CalendarDayCell[]>([]);
+  const [calendarLayout, setCalendarLayout] = useState<"default" | "overview" | "daily" | "week">(
+    "default",
+  );
   const [loading, setLoading] = useState(true);
   const dragState = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null);
   const resizeState = useRef<{
@@ -195,6 +200,13 @@ export function PdfPage({
         const dayCells: CalendarDayCell[] = [];
         let fromDateLinkCount = 0;
         const compactCalendarPage = isCompactCalendarPage(pageNumber);
+
+        const pageText = (await page.getTextContent()).items
+          .map((item) => ("str" in item ? item.str : ""))
+          .join(" ");
+        const isDailySpread =
+          pageText.includes("Breakfast") && pageText.includes("Snacks");
+
         for (const annotation of await page.getAnnotations()) {
           if (annotation.subtype !== "Link") continue;
 
@@ -216,7 +228,7 @@ export function PdfPage({
           const linkUrl = getAnnotationLinkUrl(annotation);
 
           if (linkUrl) {
-            const calendarDay = parseCalendarDayFromUri(linkUrl, base, compactCalendarPage);
+            const calendarDay = parseCalendarDayFromUri(linkUrl, base, true);
             if (calendarDay) {
               dayCells.push(calendarDay);
               fromDateLinkCount++;
@@ -241,19 +253,32 @@ export function PdfPage({
           const filteredLinks = pageLinks.filter(
             (link) => !isSectionIndexOverlayLink(pageNumber, link),
           );
-          const hasDailyMiniCalGrid = dayCells.some(
+
+          const dailyMiniCalCells = dayCells.filter(
             (cell) => cell.x >= 25 && cell.x <= 50 && cell.y >= 18 && cell.y <= 32,
           );
           const isDailyMiniCal =
-            calendarPageIndex.dailyPlannerPages.includes(pageNumber) ||
-            (fromDateLinkCount >= 35 &&
-              fromDateLinkCount <= 55 &&
-              hasDailyMiniCalGrid);
-          const compactCalendar = compactCalendarPage || isDailyMiniCal;
-          const compactVariant = isDailyMiniCal ? "daily" : "overview";
+            isDailySpread &&
+            fromDateLinkCount >= 35 &&
+            fromDateLinkCount <= 55 &&
+            dailyMiniCalCells.length >= 38;
+          const isWeekSpread =
+            !isDailySpread &&
+            fromDateLinkCount >= 35 &&
+            fromDateLinkCount <= 55 &&
+            (calendarPageIndex.weekPlannerPages.includes(pageNumber) ||
+              dayCells.some((cell) => cell.y >= 22 && cell.y <= 36));
+          const compactCalendar = compactCalendarPage || isDailyMiniCal || isWeekSpread;
+          const compactVariant = isDailyMiniCal ? "daily" : isWeekSpread ? "week" : "overview";
+
           setLinks(filteredLinks);
           setCalendarCells(
             prepareCalendarCells(dayCells, compactCalendar, pageNumber, compactVariant),
+          );
+          setCalendarLayout(
+            compactCalendar
+              ? compactVariant
+              : "default",
           );
         }
       } catch (renderError) {
@@ -273,7 +298,19 @@ export function PdfPage({
       cancelled = true;
       renderTask?.cancel();
     };
-  }, [pdf, pageNumber, scale, calendarPageIndex.dailyPlannerPages]);
+  }, [pdf, pageNumber, scale, calendarPageIndex.dailyPlannerPages, calendarPageIndex.weekPlannerPages]);
+
+  const compactCalendar = calendarLayout !== "default";
+  const isDailyMiniCal = calendarLayout === "daily";
+  const weekFocusY =
+    calendarLayout === "week" && activeCalendarDate
+      ? resolveWeekRowY(activeCalendarDate, calendarPageIndex)
+      : null;
+
+  useEffect(() => {
+    if (weekFocusY == null) return;
+    weekFocusRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [pageNumber, weekFocusY, calendarLayout]);
 
   const getPointerPercent = (event: ReactMouseEvent) => {
     const rect = containerRef.current!.getBoundingClientRect();
@@ -540,12 +577,6 @@ export function PdfPage({
   const pageImages = pageAnnotations.filter(isImageAnnotation);
   const pageOthers = pageAnnotations.filter((item) => !isImageAnnotation(item));
   const sectionIndex = getSectionIndex(pageNumber);
-  const hasDailyMiniCalGrid = calendarCells.some(
-    (cell) => cell.x >= 25 && cell.x <= 50 && cell.y >= 18 && cell.y <= 32,
-  );
-  const isDailyMiniCal =
-    calendarPageIndex.dailyPlannerPages.includes(pageNumber) || hasDailyMiniCalGrid;
-  const compactCalendar = isCompactCalendarPage(pageNumber) || isDailyMiniCal;
 
   return (
     <div className="relative mx-auto w-full" style={{ maxWidth: pageSize.width }}>
@@ -560,6 +591,15 @@ export function PdfPage({
         onClick={handlePageClick}
       >
         <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
+
+        {weekFocusY != null && (
+          <div
+            ref={weekFocusRef}
+            className="pointer-events-none absolute left-0 w-full"
+            style={{ top: `${weekFocusY}%`, height: 0 }}
+            aria-hidden="true"
+          />
+        )}
 
         <CalendarOverlay
           cells={calendarCells}
