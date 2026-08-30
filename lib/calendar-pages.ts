@@ -174,9 +174,31 @@ export function isCalendarSidebarTab(link: { x: number; y: number; width: number
 export function isCalendarPlannerSpread(pageNumber: number) {
   return (
     pageNumber >= 231 ||
-    (pageNumber >= 200 && pageNumber <= 230) ||
+    (pageNumber >= 190 && pageNumber <= 230) ||
     isMonthlyPlannerPage(pageNumber)
   );
+}
+
+function inferDateFromPageLinks(
+  pageLinks: Array<{ uri?: string }>,
+): string | null {
+  const dates: string[] = [];
+  for (const link of pageLinks) {
+    if (!link.uri) continue;
+    const date = parseDateFromCalendarUri(link.uri);
+    if (date) dates.push(date);
+  }
+  if (dates.length === 0) return null;
+  dates.sort();
+  return dates[Math.floor(dates.length / 2)] ?? null;
+}
+
+function isWeekPlannerPage(pageNumber: number, index: CalendarPageIndex) {
+  return index.weekPlannerPages.includes(pageNumber) || (pageNumber >= 190 && pageNumber <= 230);
+}
+
+function isDailyPlannerPage(pageNumber: number, index: CalendarPageIndex) {
+  return index.dailyPlannerPages.includes(pageNumber) || pageNumber >= 231;
 }
 
 /** Week spread linked from the daily sidebar (authoritative in the PDF). */
@@ -226,34 +248,41 @@ export function resolveCalendarSidebarNavigationWithLinks(
   currentPage: number,
   activeDate: string | null,
   index: CalendarPageIndex,
-  pageLinks: Array<{ x: number; y: number; width: number; page?: number }>,
+  pageLinks: Array<{ x: number; y: number; width: number; page?: number; uri?: string }>,
 ): number | null {
-  if (!isCalendarPlannerSpread(currentPage)) {
+  if (!needsCalendarSidebarOverride(currentPage, index)) {
     return null;
   }
 
-  const dateContext = calendarDateContext(currentPage, activeDate, index) ?? activeDate;
+  const dateContext =
+    calendarDateContext(currentPage, activeDate, index) ??
+    activeDate ??
+    inferDateFromPageLinks(pageLinks);
 
   if (tabIndex === 0) {
-    if (currentPage >= 231) {
+    // Day → week
+    if (isDailyPlannerPage(currentPage, index)) {
       const embeddedWeek = embeddedDailyWeekPage(pageLinks);
       if (embeddedWeek) return embeddedWeek;
 
       if (dateContext && isCalendarIndexReady(index)) {
         return resolveWeekPage(dateContext, index);
       }
+      return null;
     }
 
-    if (currentPage >= 200 && currentPage <= 230) {
-      if (!dateContext) {
-        return index.yearPageMap["2026"] ?? YEAR_OVERVIEW_PAGES[0];
+    // Week → month (never skip straight to year)
+    if (isWeekPlannerPage(currentPage, index)) {
+      if (dateContext) {
+        return resolveMonthPage(dateContext);
       }
-      return resolveMonthPage(dateContext);
+      return null;
     }
 
-    if (isMonthlyPlannerPage(currentPage)) {
+    // Month → year
+    if (isMonthlyPlannerPage(currentPage) || index.monthlyPlannerPages.includes(currentPage)) {
       const year = dateContext?.slice(0, 4) ?? "2026";
-      return index.yearPageMap[year] ?? YEAR_OVERVIEW_PAGES[0];
+      return index.yearPageMap[year] ?? YEAR_OVERVIEW_PAGE;
     }
   }
 
@@ -287,7 +316,7 @@ export function resolveCalendarSidebarNavigation(
 
     if (index.weekPlannerPages.includes(currentPage)) {
       if (!dateContext) {
-        return index.yearPageMap["2026"] ?? YEAR_OVERVIEW_PAGES[0];
+        return null;
       }
       return resolveMonthPage(dateContext);
     }

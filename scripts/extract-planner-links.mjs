@@ -59,7 +59,7 @@ function isCalendarSidebarTab(link) {
 function isCalendarPlannerSpread(pageNumber) {
   return (
     pageNumber >= 231 ||
-    (pageNumber >= 200 && pageNumber <= 230) ||
+    (pageNumber >= 190 && pageNumber <= 230) ||
     (pageNumber >= 129 && pageNumber <= 140)
   );
 }
