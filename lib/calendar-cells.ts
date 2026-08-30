@@ -20,8 +20,20 @@ export function collectDayCellsFromLinks(links: LinkOverlay[]): CalendarDayCell[
 
   for (const link of links) {
     if (!link.uri) continue;
-    const cell = parseCalendarDayFromUri(link.uri, link, true);
-    if (cell) dayCells.push(cell);
+    const match = link.uri.match(/FROMDATE=([^&%]+)/);
+    if (!match) continue;
+
+    const date = decodeURIComponent(match[1]).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+
+    // Stored links are already expanded for tap targets at build time.
+    dayCells.push({
+      date,
+      x: link.x,
+      y: link.y,
+      width: link.width,
+      height: link.height,
+    });
   }
 
   return dayCells;
@@ -191,24 +203,57 @@ export function filterMainGridCells(
   );
 }
 
+function nearestOverviewGridMonth(cell: CalendarDayCell, pageNumber: number) {
+  const anchors = COMPACT_CALENDAR_MONTH_ANCHORS[pageNumber];
+  if (!anchors) return 0;
+
+  const centerX = cell.x + cell.width / 2;
+  const centerY = cell.y + cell.height / 2;
+  let bestMonth = 1;
+  let bestDistance = Infinity;
+
+  for (const [monthStr, anchor] of Object.entries(anchors)) {
+    const distance = Math.hypot(centerX - anchor.x, centerY - anchor.y);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestMonth = parseInt(monthStr, 10);
+    }
+  }
+
+  return bestMonth;
+}
+
 function scoreCompactCalendarCell(cell: CalendarDayCell, pageNumber: number) {
-  const month = parseInt(cell.date.slice(5, 7), 10);
-  const anchor = COMPACT_CALENDAR_MONTH_ANCHORS[pageNumber]?.[month];
+  const dateMonth = parseInt(cell.date.slice(5, 7), 10);
+  const gridMonth = nearestOverviewGridMonth(cell, pageNumber);
+  const anchor = COMPACT_CALENDAR_MONTH_ANCHORS[pageNumber]?.[dateMonth];
   if (!anchor) return 0;
 
   const centerX = cell.x + cell.width / 2;
   const centerY = cell.y + cell.height / 2;
   const distance = Math.hypot(centerX - anchor.x, centerY - anchor.y);
-  return 1000 - distance;
+
+  // Prefer the copy inside that month's mini-calendar, not an adjacent overflow cell.
+  const monthMatch = gridMonth === dateMonth ? 10_000 : 0;
+  return monthMatch + (1_000 - distance);
 }
 
 /** Prefer the main monthly grid when the same date appears twice on one page. */
 export function dedupeCalendarCells(
   cells: CalendarDayCell[],
-  options?: { compact?: boolean; pageNumber?: number },
+  options?: {
+    compact?: boolean;
+    pageNumber?: number;
+    variant?: "overview" | "daily" | "week" | "default";
+  },
 ): CalendarDayCell[] {
-  const { compact = false, pageNumber } = options ?? {};
+  const { compact = false, pageNumber, variant = "overview" } = options ?? {};
   const byDate = new Map<string, CalendarDayCell>();
+  const useOverviewScoring =
+    compact &&
+    variant === "overview" &&
+    pageNumber != null &&
+    COMPACT_CALENDAR_MONTH_ANCHORS[pageNumber] != null;
 
   for (const cell of cells) {
     const existing = byDate.get(cell.date);
@@ -218,8 +263,8 @@ export function dedupeCalendarCells(
     }
 
     const score = (c: CalendarDayCell) => {
-      if (compact && pageNumber) {
-        return scoreCompactCalendarCell(c, pageNumber);
+      if (useOverviewScoring) {
+        return scoreCompactCalendarCell(c, pageNumber!);
       }
 
       const centerX = c.x + c.width / 2;
@@ -247,5 +292,6 @@ export function prepareCalendarCells(
   return dedupeCalendarCells(filterMainGridCells(cells, compact, variant), {
     compact,
     pageNumber,
+    variant,
   });
 }
