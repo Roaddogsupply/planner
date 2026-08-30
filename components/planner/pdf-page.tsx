@@ -21,7 +21,11 @@ import { fontFamilyCss, loadGoogleFont } from "@/lib/google-fonts";
 import type { TextStyle } from "@/lib/text-styles";
 import { cn } from "@/lib/utils";
 import { Check } from "lucide-react";
-import { parseCalendarDayFromUri, prepareCalendarCells } from "@/lib/calendar-cells";
+import {
+  collectDayCellsFromLinks,
+  parseCalendarDayFromUri,
+  prepareCalendarCells,
+} from "@/lib/calendar-cells";
 import type { CalendarDayCell, CalendarEvent } from "@/lib/calendar-types";
 import { imageHeightForWidth, imageWidthForHeight } from "@/lib/image-utils";
 import { CalendarOverlay } from "@/components/planner/calendar-overlay";
@@ -214,9 +218,8 @@ export function PdfPage({
         );
         setLinks(storedLinks);
 
-        const pageLinks: LinkOverlay[] = [];
-        const dayCells: CalendarDayCell[] = [];
-        let fromDateLinkCount = 0;
+        const dayCells = collectDayCellsFromLinks(storedLinks);
+        let fromDateLinkCount = dayCells.length;
         const compactCalendarPage = isCompactCalendarPage(pageNumber);
         const index = calendarPageIndexRef.current;
 
@@ -226,36 +229,39 @@ export function PdfPage({
         const isDailySpread =
           pageText.includes("Breakfast") && pageText.includes("Snacks");
 
-        try {
-          for (const annotation of await page.getAnnotations()) {
-            if (annotation.subtype !== "Link") continue;
+        // Fallback when prebuilt links are not loaded yet (local dev without JSON).
+        if (dayCells.length === 0) {
+          try {
+            for (const annotation of await page.getAnnotations()) {
+              if (annotation.subtype !== "Link") continue;
 
-            const rect = annotation.rect as [number, number, number, number];
-            const [vx1, vy1] = viewport.convertToViewportPoint(rect[0], rect[1]);
-            const [vx2, vy2] = viewport.convertToViewportPoint(rect[2], rect[3]);
-            const left = Math.min(vx1, vx2);
-            const top = Math.min(vy1, vy2);
-            const width = Math.abs(vx2 - vx1);
-            const height = Math.abs(vy2 - vy1);
+              const rect = annotation.rect as [number, number, number, number];
+              const [vx1, vy1] = viewport.convertToViewportPoint(rect[0], rect[1]);
+              const [vx2, vy2] = viewport.convertToViewportPoint(rect[2], rect[3]);
+              const left = Math.min(vx1, vx2);
+              const top = Math.min(vy1, vy2);
+              const width = Math.abs(vx2 - vx1);
+              const height = Math.abs(vy2 - vy1);
 
-            const base: LinkOverlay = {
-              x: toPercent(left, viewport.width),
-              y: toPercent(top, viewport.height),
-              width: toPercent(width, viewport.width),
-              height: toPercent(height, viewport.height),
-            };
+              const base: LinkOverlay = {
+                x: toPercent(left, viewport.width),
+                y: toPercent(top, viewport.height),
+                width: toPercent(width, viewport.width),
+                height: toPercent(height, viewport.height),
+              };
 
-            const linkUrl = getAnnotationLinkUrl(annotation);
-            if (linkUrl) {
-              const calendarDay = parseCalendarDayFromUri(linkUrl, base, true);
-              if (calendarDay) {
-                dayCells.push(calendarDay);
-                fromDateLinkCount++;
+              const linkUrl = getAnnotationLinkUrl(annotation);
+              if (linkUrl) {
+                const calendarDay = parseCalendarDayFromUri(linkUrl, base, true);
+                if (calendarDay) {
+                  dayCells.push(calendarDay);
+                  fromDateLinkCount++;
+                }
               }
             }
+          } catch (annotationError) {
+            console.warn("Calendar overlay links unavailable for this page:", annotationError);
           }
-        } catch (annotationError) {
-          console.warn("Calendar overlay links unavailable for this page:", annotationError);
         }
 
         if (cancelled || generation !== drawGenerationRef.current) return;
@@ -302,36 +308,36 @@ export function PdfPage({
 
   // Week/daily calendar layout depends on the async page index — refresh once it is ready.
   useEffect(() => {
+    if (links.length === 0) return;
+
     const index = calendarPageIndexRef.current;
-    if (!isCalendarIndexReady(index) || links.length === 0) return;
+    const dayCells = collectDayCellsFromLinks(links);
+    if (dayCells.length === 0) return;
 
     const compactCalendarPage = isCompactCalendarPage(pageNumber);
-    if (compactCalendarPage) {
-      setCalendarLayout("overview");
-      return;
-    }
-
-    const fromDateLinkCount = links.filter((link) => link.uri?.includes("FROMDATE=")).length;
-    const isDailySpread = calendarCells.some(
+    const fromDateLinkCount = dayCells.length;
+    const dailyMiniCalCells = dayCells.filter(
       (cell) => cell.x >= 25 && cell.x <= 50 && cell.y >= 18 && cell.y <= 32,
     );
+    const isDailySpread = dailyMiniCalCells.length >= 38;
     const isWeekSpread =
-      index.weekPlannerPages.includes(pageNumber) ||
-      (fromDateLinkCount >= 35 &&
-        fromDateLinkCount <= 55 &&
-        calendarCells.some((cell) => cell.y >= 22 && cell.y <= 36));
+      !isDailySpread &&
+      fromDateLinkCount >= 35 &&
+      fromDateLinkCount <= 55 &&
+      (index.weekPlannerPages.includes(pageNumber) ||
+        dayCells.some((cell) => cell.y >= 22 && cell.y <= 36));
+    const compactCalendar = compactCalendarPage || isDailySpread || isWeekSpread;
+    const compactVariant = isDailySpread ? "daily" : isWeekSpread ? "week" : "overview";
 
-    if (isDailySpread && fromDateLinkCount >= 35) {
-      setCalendarLayout("daily");
-    } else if (isWeekSpread) {
-      setCalendarLayout("week");
-    }
+    setCalendarCells(
+      prepareCalendarCells(dayCells, compactCalendar, pageNumber, compactVariant),
+    );
+    setCalendarLayout(compactCalendar ? compactVariant : "default");
   }, [
     calendarPageIndex.dailyPlannerPages.length,
     calendarPageIndex.weekPlannerPages.length,
     pageNumber,
-    links.length,
-    calendarCells.length,
+    links,
   ]);
 
   const compactCalendar = calendarLayout !== "default";

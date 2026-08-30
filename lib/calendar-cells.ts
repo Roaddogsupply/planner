@@ -5,7 +5,21 @@ type LinkOverlay = {
   y: number;
   width: number;
   height: number;
+  uri?: string;
 };
+
+/** Build calendar day hit areas from prebuilt planner-links.json (Safari-safe). */
+export function collectDayCellsFromLinks(links: LinkOverlay[]): CalendarDayCell[] {
+  const dayCells: CalendarDayCell[] = [];
+
+  for (const link of links) {
+    if (!link.uri) continue;
+    const cell = parseCalendarDayFromUri(link.uri, link, true);
+    if (cell) dayCells.push(cell);
+  }
+
+  return dayCells;
+}
 
 /** Month centers on compact calendar spreads — used to pick the right mini calendar. */
 const COMPACT_CALENDAR_MONTH_ANCHORS: Record<number, Record<number, { x: number; y: number }>> = {
